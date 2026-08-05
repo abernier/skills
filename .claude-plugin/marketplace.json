@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "abernier-skills",
+  "owner": { "name": "Antoine Bernier" },
+  "description": "Antoine Bernier's Claude Code plugins.",
+  "plugins": [
+    {
+      "name": "abernier",
+      "source": "./",
+      "description": "Antoine Bernier's Claude Code plugin.",
+      "category": "workflow"
+    }
+  ]
+}
