@@ -1,0 +1,17 @@
+{
+  "name": "@abernier/skills",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.4",
+  "description": "Toolchain for the plugin's own scripts. The plugin itself installs nothing.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "shellcheck --severity=warning scripts/branchstat.sh scripts/branchstat.test.sh",
+    "test": "bash scripts/branchstat.test.sh",
+    "lgtm": "pnpm run typecheck && pnpm run lint && pnpm run test && echo 'LGTM!'"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2"
+  }
+}

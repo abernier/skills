@@ -5,5 +5,8 @@
   "author": { "name": "Antoine Bernier" },
   "homepage": "https://github.com/abernier/skills",
   "repository": "https://github.com/abernier/skills",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": [
+    { "name": "mattpocock-skills", "marketplace": "claude-plugins-official" }
+  ]
 }

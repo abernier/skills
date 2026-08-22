@@ -1,0 +1,36 @@
+name: Test
+
+# The suite is the only thing standing between a naming convention changing and
+# the buckets quietly following it — a wrong grouping still renders as a
+# plausible table. And the report's types are stripped at run time, never
+# checked, so nothing but `tsc` reads them.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lgtm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Without it the renderer half of the suite skips itself, and says so.
+      - name: Install cloc
+        run: sudo apt-get update && sudo apt-get install -y cloc
+
+      # The same command as locally, so a green branch here is a green branch
+      # there: typecheck, shellcheck, then the suite.
+      - run: pnpm run lgtm
