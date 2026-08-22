@@ -18,11 +18,10 @@ A [Claude Code plugin](https://code.claude.com/docs/en/plugins).
   what this repo reviews against and what its gate is called, so it restates no
   threshold of its own.
 
-  Two of its steps read better with `mattpocock-skills`' `code-review` and
-  `codebase-design` skills. Neither is declared as a dependency — a plugin
-  manifest has no such field, and this one would duplicate a channel most of
-  these repos already have at user scope. Both steps say what to do without
-  them, and the command names what it took.
+  Two of its steps use `mattpocock-skills`' `code-review` and `codebase-design`
+  skills, so this plugin **depends** on `mattpocock-skills@claude-plugins-official`
+  — installing `abernier` installs it, and enabling one enables both. Both steps
+  still say what to do without it, and the command reports which path it took.
 - **`/branchstat`** — net diff of the branch vs its base. A headline total
   counted the way GitHub counts a PR, then a breakdown of hand-written code only
   — source, tests and config apart — rolled up by module, so the branch says

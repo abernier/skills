@@ -31,10 +31,12 @@ from step 0. It runs Standards (repo conventions + Fowler smell baseline) and
 Spec (does the diff match the originating issue/PRD) as parallel sub-agents and
 reports them side by side. Don't re-do that review by hand — let the skill own it.
 
-Not installed? Spawn the two sub-agents yourself, in parallel, on the same
-`git diff "$BASE"...HEAD`: one reading the diff against the standards sources,
-one against the issue or PR body the branch came from. Say which of the two paths
-you took — the axes are the same, the reading is not as sharp.
+It ships as a dependency of this plugin, so it is normally there. If it is not —
+pruned, disabled at another scope, a bare `--plugin-dir` run — spawn the two
+sub-agents yourself, in parallel, on the same `git diff "$BASE"...HEAD`: one
+reading the diff against the standards sources, one against the issue or PR body
+the branch came from. Say which of the two paths you took — the axes are the
+same, the reading is not as sharp.
 
 ## 2. Seam review — the third axis
 
@@ -48,9 +50,9 @@ ones worth reading — then spawn **one sub-agent** to read them in the
 interface small for the behaviour behind it, is the seam where a caller would
 look for it, is a new abstraction earning its keep or passing through.
 
-Not installed? Ask the same three questions in plain words. They are the whole
-step; the skill sharpens how it is read and named, and nothing here depends on
-having it.
+Same dependency, same caveat: if the skill is not there, ask the three questions
+in plain words. They are the whole step — the skill sharpens how it is read and
+named, it is not the reading.
 
 **Delegate it, don't run it inline.** Its input is wide — a branchstat rollup and
 several whole modules — while what survives here is a handful of findings. Two

@@ -3,6 +3,7 @@
   "name": "abernier-skills",
   "owner": { "name": "Antoine Bernier" },
   "description": "Antoine Bernier's Claude Code plugins.",
+  "allowCrossMarketplaceDependenciesOn": ["claude-plugins-official"],
   "plugins": [
     {
       "name": "abernier",
