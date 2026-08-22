@@ -8,7 +8,8 @@
 #        bash branchstat.sh --classify      # paths on stdin → "<bucket> <path>"
 #
 # It runs against whatever repo the caller stands in — nothing here is specific
-# to one project. $BRANCHSTAT_REPRO overrides the "reproduce locally" line of the
+# to one project. Requirements degrade rather than fail: git alone prints the
+# headline total, cloc and node buy the breakdown under it. $BRANCHSTAT_REPRO overrides the "reproduce locally" line of the
 # markdown footer, for a caller that reached the script by a path its readers
 # have not got. Requirements: git, node (≥ 22.6, or a local `tsx`), and cloc
 # for the breakdown; without cloc the total still prints and says so.
@@ -63,6 +64,13 @@ REPORT_TS="$SCRIPT_DIR/branchstat-report.mts"
 # invoked in has any toolchain of its own: Node strips the types itself from
 # 22.6, and a local or npx `tsx` covers anything older.
 node_strips_types=""
+
+# Whether this machine can run the report at all: Node that strips types, or a
+# `tsx` to hand it to.
+have_node() {
+  command -v node > /dev/null || command -v npx > /dev/null
+}
+
 report_ts() {
   if [ -z "$node_strips_types" ]; then
     if node --disable-warning=ExperimentalWarning --experimental-strip-types \
@@ -167,6 +175,10 @@ esac
 # instead of measuring a range, so it answers alone and ignores the rest — but it
 # is parsed like every other flag, in whatever position the caller puts it.
 if [ "$classify" = 1 ]; then
+  if ! have_node; then
+    echo "branchstat: --classify needs node" >&2
+    exit 2
+  fi
   report_ts --classify
   exit 0
 fi
@@ -379,13 +391,25 @@ if [ -z "$counted" ]; then
   exit 0
 fi
 
-if ! command -v cloc >/dev/null; then
+# The breakdown needs cloc to count code apart from comments and blanks, and the
+# report needs node to lay it out. Neither is a hard requirement: the headline
+# total is pure git, and it is the number a reader came for first. A missing tool
+# costs the breakdown, says which tool and how to get it, and exits 0 — a CI job
+# that only wanted the total should not go red over a runner's package list.
+missing=""
+command -v cloc > /dev/null || missing="cloc"
+if [ -z "$missing" ] && ! have_node; then
+  missing="node"
+fi
+if [ -n "$missing" ]; then
+  install="brew install $missing"
+  [ "$missing" = cloc ] && install="brew install cloc · apt-get install cloc · npx cloc"
   if [ "$render" = md ]; then
-    printf '%s\n\n`%s` → `%s` · %s\n\n_cloc is not installed — no bucket breakdown._\n' \
-      "$title" "$base" "$tip_label" "$stat"
+    printf '%s\n\n`%s` → `%s` · %s\n\n_%s is not installed — no bucket breakdown (`%s`)._\n' \
+      "$title" "$base" "$tip_label" "$stat" "$missing" "$install"
   else
-    printf 'vs %s (%s)\n %s\n(cloc not installed — skipping the breakdown)\n' \
-      "$base" "$range" "$stat"
+    printf 'vs %s (%s)\n %s\n(%s not installed — skipping the breakdown: %s)\n' \
+      "$base" "$range" "$stat" "$missing" "$install"
   fi
   exit 0
 fi

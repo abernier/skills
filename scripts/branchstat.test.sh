@@ -405,6 +405,41 @@ if command -v cloc > /dev/null; then
     pass "--depth: rejects what is not a whole number" ||
     fail "--depth: rejects what is not a whole number"
 
+  # A machine without cloc, or without node, still gets the number it came for:
+  # the total is pure git. What it must not do is fail, or say nothing about why
+  # the breakdown vanished.
+  #
+  # Each shim is a PATH built one tool at a time. Filtering the real PATH by
+  # directory cannot separate two tools that share one — here node and cloc sit
+  # in the same bin. Its own fixture, too: a repo left dirty by an earlier case
+  # would send the run down the working-tree snapshot and measure something else.
+  shim() {
+    local dir tool
+    dir="$(mktemp -d)"
+    for tool in bash git dirname mktemp "$@"; do
+      ln -s "$(command -v "$tool")" "$dir/$tool"
+    done
+    printf '%s' "$dir"
+  }
+  bare="$(mktemp -d)"
+  (
+    cd "$bare" || exit 1
+    git init -q . && git branch -M main
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+    for i in $(seq 30); do printf 'export const a%s = %s\n' "$i" "$i"; done > App.ts
+    git add -A && git -c user.email=t@t -c user.name=t commit -q -m work
+  )
+  nocloc_bin="$(shim node)"
+  nonode_bin="$(shim cloc)"
+  nocloc="$(cd "$bare" && PATH="$nocloc_bin" bash "$script" main~1)"
+  nonode="$(cd "$bare" && PATH="$nonode_bin" bash "$script" main~1)"
+  rm -rf "$nocloc_bin" "$nonode_bin" "$bare"
+  has "1 file changed, 30 insertions(+)" "$nocloc" "no cloc: the total still prints"
+  has "cloc not installed" "$nocloc" "no cloc: it says which tool is missing"
+  has "brew install cloc" "$nocloc" "no cloc: and how to get it"
+  has "1 file changed, 30 insertions(+)" "$nonode" "no node: the total still prints"
+  has "node not installed" "$nonode" "no node: it says which tool is missing"
+
   # A repo says what else is not product code in `.claude/branchstat.json`, and
   # the patterns have to reach both dialects: git's, or the total disagrees with
   # the buckets, and cloc's, or the breakdown counts what the repo disowned.
