@@ -44,6 +44,31 @@ A [Claude Code plugin](https://code.claude.com/docs/en/plugins).
   { "exclude": ["packages/www/public/", "src/generated/", "*.snap"] }
   ```
 
+  The same report on every PR, without vendoring the script: the workflow is
+  reusable.
+
+  ```yaml
+  # .github/workflows/branchstat.yml
+  on:
+    pull_request:
+      types: [opened, synchronize, reopened]
+
+  jobs:
+    branchstat:
+      uses: abernier/skills/.github/workflows/branchstat.yml@v0.2.0
+      permissions:
+        contents: read
+        pull-requests: write
+  ```
+
+  It posts one sticky comment, diffs against the branch the PR targets — the
+  parent, for a stacked PR — and reads the script from the ref it was pinned at,
+  so the two never drift apart. `inputs.base` overrides what it diffs against,
+  `inputs.repro` the footer's "reproduce locally" line.
+
+  Pin the exact tag while this is 0.x: `v0` moves, and a 0.x minor is allowed to
+  break. From 1.0 on, `v1` is the ref to use.
+
 ## Install
 
 ```
@@ -83,6 +108,19 @@ types at run time and checks nothing; `erasableSyntaxOnly` keeps the file to
 what Node can strip.
 
 The toolchain is this repo's own — the plugin installs nothing in yours.
+
+## Release
+
+The plugin is consumed by a git ref, never by an npm install, so a release is a
+tag — `vX.Y.Z`, plus a moving `vX`. Changesets decides the number and writes the
+changelog:
+
+```
+pnpm changeset      # commit the file it writes, with the change it describes
+```
+
+Merging to `main` opens a **Release** PR carrying the bump; merging *that* tags
+and publishes the release. Nothing goes to npm.
 
 ## License
 
