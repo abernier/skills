@@ -1,0 +1,50 @@
+name: Release
+
+# Changesets opens a "Release" PR that carries the version bump and the
+# changelog; merging it is the release. This job runs on both halves of that:
+# it maintains the PR while changesets are pending, and tags once the merge
+# leaves none.
+on:
+  push:
+    branches: [main]
+
+# A second push while a release is mid-tag would race the first for the same
+# tag name.
+concurrency: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - id: changesets
+        uses: changesets/action@v1
+        with:
+          version: pnpm run changeset:version
+          title: Release
+          commit: "chore(release): version the plugin"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # No changesets left means the Release PR is what just landed, so the
+      # version in `package.json` is a release nobody has tagged yet.
+      - name: Tag the release
+        if: steps.changesets.outputs.hasChangesets == 'false'
+        run: bash scripts/release-tag.sh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
