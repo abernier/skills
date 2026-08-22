@@ -70,6 +70,8 @@ drift silently, and a wrong grouping still reads as a plausible table:
 bash scripts/branchstat.test.sh
 ```
 
+CI runs that suite, and shellcheck over both scripts, on every push and PR.
+
 ## License
 
 MIT
