@@ -24,15 +24,17 @@ as "there is none" — that is a finding, not a blocker.
 
 ## 1. Two-axis review — Standards and Spec
 
-Invoke the **`code-review`** skill with the fixed point set to `$BASE` and the
-standards sources from step 0. It runs Standards (repo conventions + Fowler smell
-baseline) and Spec (does the diff match the originating issue/PRD) as parallel
-sub-agents and reports them side by side. Don't re-do that review by hand — let
-the skill own it.
+Invoke the **`code-review`** skill — `mattpocock-skills:code-review`, the
+two-axis one, **not** Claude Code's built-in `/code-review`, which reviews for
+correctness bugs and is a different tool. Fixed point `$BASE`, standards sources
+from step 0. It runs Standards (repo conventions + Fowler smell baseline) and
+Spec (does the diff match the originating issue/PRD) as parallel sub-agents and
+reports them side by side. Don't re-do that review by hand — let the skill own it.
 
-Without that skill installed, spawn the two sub-agents yourself, in parallel, on
-the same `git diff "$BASE"...HEAD`: one reading the diff against the standards
-sources, one against the issue or PR body the branch came from.
+Not installed? Spawn the two sub-agents yourself, in parallel, on the same
+`git diff "$BASE"...HEAD`: one reading the diff against the standards sources,
+one against the issue or PR body the branch came from. Say which of the two paths
+you took — the axes are the same, the reading is not as sharp.
 
 ## 2. Seam review — the third axis
 
@@ -42,9 +44,13 @@ place**.
 
 Scope the branch with **`/branchstat`** — the modules that took the charge are the
 ones worth reading — then spawn **one sub-agent** to read them in the
-`codebase-design` vocabulary: is the interface small for the behaviour behind it,
-is the seam where a caller would look for it, is a new abstraction earning its
-keep or passing through.
+**`codebase-design`** vocabulary (`mattpocock-skills:codebase-design`): is the
+interface small for the behaviour behind it, is the seam where a caller would
+look for it, is a new abstraction earning its keep or passing through.
+
+Not installed? Ask the same three questions in plain words. They are the whole
+step; the skill sharpens how it is read and named, and nothing here depends on
+having it.
 
 **Delegate it, don't run it inline.** Its input is wide — a branchstat rollup and
 several whole modules — while what survives here is a handful of findings. Two

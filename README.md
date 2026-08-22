@@ -17,6 +17,12 @@ A [Claude Code plugin](https://code.claude.com/docs/en/plugins).
   merge-readiness sweep, apply, then the repo's own heavy gate. It discovers
   what this repo reviews against and what its gate is called, so it restates no
   threshold of its own.
+
+  Two of its steps read better with `mattpocock-skills`' `code-review` and
+  `codebase-design` skills. Neither is declared as a dependency — a plugin
+  manifest has no such field, and this one would duplicate a channel most of
+  these repos already have at user scope. Both steps say what to do without
+  them, and the command names what it took.
 - **`/branchstat`** — net diff of the branch vs its base. A headline total
   counted the way GitHub counts a PR, then a breakdown of hand-written code only
   — source, tests and config apart — rolled up by module, so the branch says
