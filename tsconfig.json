@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    // TypeScript 7 does not pick @types/node up on its own here.
+    "types": ["node"],
+    // Node runs the report by stripping its types, which checks nothing and
+    // refuses nothing it cannot erase. This is the flag that says so: an enum or
+    // a parameter property here fails the typecheck instead of the run.
+    "erasableSyntaxOnly": true
+  },
+  "include": ["scripts/**/*.mts"]
+}

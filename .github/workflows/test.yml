@@ -2,8 +2,8 @@ name: Test
 
 # The suite is the only thing standing between a naming convention changing and
 # the buckets quietly following it — a wrong grouping still renders as a
-# plausible table. Nothing in this repo installs, builds or has a hook to hang
-# it on, so CI is where it runs.
+# plausible table. And the report's types are stripped at run time, never
+# checked, so nothing but `tsc` reads them.
 on:
   push:
     branches: [main]
@@ -14,29 +14,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  branchstat:
+  lgtm:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v5
-
-      # The report reads the version Node ships with — the same path a consuming
-      # repo takes, since the plugin cannot assume one has `tsx`.
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
 
       # Without it the renderer half of the suite skips itself, and says so.
       - name: Install cloc
         run: sudo apt-get update && sudo apt-get install -y cloc
 
-      - run: bash scripts/branchstat.test.sh
-
-      # Preinstalled on the runner. The script is the half that talks to git and
-      # cloc, and quoting is where that half breaks. Warnings up: the suite is
-      # written in `test && pass || fail` throughout, which info-level reads as a
-      # broken if-then-else and which is exactly what it means here.
-      - run: |
-          shellcheck --severity=warning \
-            scripts/branchstat.sh scripts/branchstat.test.sh
+      # The same command as locally, so a green branch here is a green branch
+      # there: typecheck, shellcheck, then the suite.
+      - run: pnpm run lgtm

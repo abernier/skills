@@ -69,14 +69,21 @@ claude plugin validate .
 claude plugin validate .claude-plugin/plugin.json
 ```
 
-`branchstat` carries its own suite — the bucketing regexes and the module rollup
-drift silently, and a wrong grouping still reads as a plausible table:
+One gate, the same one CI runs:
 
 ```
-bash scripts/branchstat.test.sh
+pnpm install
+pnpm run lgtm      # typecheck, shellcheck, the branchstat suite
 ```
 
-CI runs that suite, and shellcheck over both scripts, on every push and PR.
+`branchstat` carries its own suite because the bucketing regexes and the module
+rollup drift silently — a wrong grouping still reads as a plausible table. It
+drives the shell entry point, so it covers the git and cloc plumbing and the
+TypeScript it pipes into. `tsc` is there because Node *strips* the report's
+types at run time and checks nothing; `erasableSyntaxOnly` keeps the file to
+what Node can strip.
+
+The toolchain is this repo's own — the plugin installs nothing in yours.
 
 ## License
 
