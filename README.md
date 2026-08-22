@@ -28,6 +28,9 @@ A [Claude Code plugin](https://code.claude.com/docs/en/plugins).
   /branchstat --of some-branch
   ```
 
+  Both commands answer to `/abernier:<name>` too, which is what they are called
+  where the bare name is already taken.
+
   Needs `cloc` for the breakdown (`brew install cloc`); without it the total
   still prints. A repo excludes more than the defaults — lockfiles, prose,
   vendored trees, assets — in `.claude/branchstat.json`:

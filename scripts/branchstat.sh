@@ -8,7 +8,9 @@
 #        bash branchstat.sh --classify      # paths on stdin → "<bucket> <path>"
 #
 # It runs against whatever repo the caller stands in — nothing here is specific
-# to one project. Requirements: git, node (≥ 22.6, or a local `tsx`), and cloc
+# to one project. $BRANCHSTAT_REPRO overrides the "reproduce locally" line of the
+# markdown footer, for a caller that reached the script by a path its readers
+# have not got. Requirements: git, node (≥ 22.6, or a local `tsx`), and cloc
 # for the breakdown; without cloc the total still prints and says so.
 #
 # Base resolution (stacked-PR aware): explicit arg > stack parent > origin/HEAD >
@@ -418,6 +420,10 @@ if [ "$render" = md ]; then
   case "$repro_path" in
     "$ROOT_DIR"/*) repro_path="${repro_path#"$ROOT_DIR"/}" ;;
   esac
+  repro="bash $repro_path${tip_rev:+ --of $tip_rev} $base"
+  # CI reaches the script through a checkout of its own, at a path no reader has
+  # — there, the caller says what to write instead.
+  repro="${BRANCHSTAT_REPRO:-$repro}"
   # A named branch is a commit, so it needs no label — the range line above
   # already carries its name, and the footer's job is to link the commit. Only
   # the working tree needs one, being no commit at all.
@@ -425,7 +431,6 @@ if [ "$render" = md ]; then
   if [ -n "$tip_rev" ]; then
     footer_label=""
   fi
-  emit_footer "$report" "bash $repro_path${tip_rev:+ --of $tip_rev} $base" \
-    "$footer_label" "${tip_rev:-HEAD}"
+  emit_footer "$report" "$repro" "$footer_label" "${tip_rev:-HEAD}"
 fi
 cat "$report"

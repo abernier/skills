@@ -151,6 +151,11 @@ if command -v cloc > /dev/null; then
   # here, since the temp repo is not where the plugin lives.
   has "$script main~1" "$md" "md: names the command that reproduces it"
   has "Data for " "$md" "md: carries the shared footer's revision line"
+  # CI runs it from a checkout of its own, at a path no reader of the comment
+  # has — so what the footer tells them to run is the caller's to say.
+  override="$(cd "$tmp" && BRANCHSTAT_REPRO='/branchstat main~1' bash "$script" --md main~1)"
+  has 'Reproduce locally with `/branchstat main~1`' "$override" \
+    "md: \$BRANCHSTAT_REPRO names the repro line"
   case "$text" in
     *"Reproduce locally"*) fail "text: leaked the markdown footer" ;;
     *) pass "text: keeps the markdown footer out" ;;
