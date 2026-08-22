@@ -2,6 +2,7 @@
   "name": "@abernier/skills",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.33.4",
   "description": "Toolchain for the plugin's own scripts. The plugin itself installs nothing.",
   "scripts": {
     "typecheck": "tsc --noEmit",
