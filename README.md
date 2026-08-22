@@ -44,6 +44,28 @@ A [Claude Code plugin](https://code.claude.com/docs/en/plugins).
   { "exclude": ["packages/www/public/", "src/generated/", "*.snap"] }
   ```
 
+  The same report on every PR, without vendoring the script: the workflow is
+  reusable.
+
+  ```yaml
+  # .github/workflows/branchstat.yml
+  on:
+    pull_request:
+      types: [opened, synchronize, reopened]
+
+  jobs:
+    branchstat:
+      uses: abernier/skills/.github/workflows/branchstat.yml@main
+      permissions:
+        contents: read
+        pull-requests: write
+  ```
+
+  It posts one sticky comment, diffs against the branch the PR targets — the
+  parent, for a stacked PR — and reads the script from the ref it was pinned at,
+  so the two never drift apart. `inputs.base` overrides what it diffs against,
+  `inputs.repro` the footer's "reproduce locally" line.
+
 ## Install
 
 ```

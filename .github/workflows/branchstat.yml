@@ -1,0 +1,101 @@
+name: Branch size
+
+# Reusable. A repo that wants the report calls this workflow instead of copying
+# the script — the plugin owns branchstat, in CI as in a session:
+#
+#   jobs:
+#     branchstat:
+#       uses: abernier/skills/.github/workflows/branchstat.yml@main
+#       permissions:
+#         contents: read
+#         pull-requests: write
+#
+# It needs the caller to be on `pull_request`: the report answers "how much
+# product code does this branch add", which has no meaning for a push to the
+# default branch — there is no branch left to measure. No `paths:` filter and no
+# draft gate to suggest either: this job is a git diff and a cloc pass, it costs
+# a minute, and the size of a branch is most worth watching while it is still a
+# draft.
+on:
+  workflow_call:
+    inputs:
+      base:
+        description: >-
+          What to diff against. Defaults to the branch the PR targets, which for
+          a stacked PR is its parent — never assume the default branch here.
+        type: string
+        default: ""
+      repro:
+        description: >-
+          The footer's "reproduce locally" line. Defaults to the slash command,
+          which is how a reader reaches the same report on their own machine.
+        type: string
+        default: ""
+
+jobs:
+  branchstat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # The PR head itself, not the merge commit GitHub synthesises: the footer
+      # links the commit the numbers belong to, and a synthetic merge is not a
+      # commit anyone can look at. `fetch-depth: 0` brings the base branch along,
+      # without which there is no merge-base to diff against.
+      - name: Check out the repo being measured
+        uses: actions/checkout@v5
+        with:
+          path: repo
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      # `job_workflow_sha` is the commit this very workflow file was read from —
+      # the ref the caller pinned, resolved. So the workflow and the script it
+      # runs are never two versions of each other, whatever the caller pinned.
+      - name: Check out the plugin the script lives in
+        uses: actions/checkout@v5
+        with:
+          repository: abernier/skills
+          ref: ${{ github.job_workflow_sha }}
+          path: plugin
+
+      # Node runs the report half; the plugin installs nothing in the caller's
+      # repo, so its own toolchain is never needed here.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install cloc
+        run: sudo apt-get update && sudo apt-get install -y cloc
+
+      # Both ends of the range are named, and neither is left to resolve itself.
+      #
+      # The base, because the script would ask `gt parent` — not installed here —
+      # then `origin/HEAD` — unset in a fresh checkout — and land on the default
+      # branch, the wrong answer for a stacked PR. `github.base_ref` is the
+      # branch this PR actually targets, which for a stacked one is its parent.
+      #
+      # The tip, because the script folds the working tree in when it is dirty,
+      # and on a runner it can be: an install hook regenerating a committed
+      # asset is enough. Measured that way the comment would read `worktree` and
+      # describe an artefact the runner made, not the branch. `--of` reads the
+      # commit instead — which is what a PR comment means — and takes the whole
+      # snapshot path out of play.
+      - name: Measure the branch
+        working-directory: repo
+        env:
+          BASE: ${{ inputs.base || format('origin/{0}', github.base_ref) }}
+          REPRO: ${{ inputs.repro }}
+        run: |
+          sha="$(git rev-parse --short HEAD)"
+          BRANCHSTAT_REPRO="${REPRO:-/branchstat $BASE}" \
+            bash ../plugin/scripts/branchstat.sh --md --of "$sha" "$BASE" \
+            > "$RUNNER_TEMP/branchstat-comment.md"
+
+      # No "mark the previous comment stale" step: a bench that runs for half an
+      # hour needs one, this report is overwritten before a reader could reach it.
+      - name: Post or update PR comment
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: branchstat
+          path: ${{ runner.temp }}/branchstat-comment.md

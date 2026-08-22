@@ -34,3 +34,13 @@ jobs:
       # The same command as locally, so a green branch here is a green branch
       # there: typecheck, shellcheck, then the suite.
       - run: pnpm run lgtm
+
+  # Dogfood: the plugin's own PRs get the report its callers get, so the
+  # reusable workflow is exercised by the repo that ships it — and the ref it
+  # pins is this branch, not `main`.
+  branchstat:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/branchstat.yml
+    permissions:
+      contents: read
+      pull-requests: write
