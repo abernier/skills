@@ -1,5 +1,19 @@
 # @abernier/skills
 
+## 0.3.0
+
+### Minor Changes
+
+- [#5](https://github.com/abernier/skills/pull/5) [`eaac659`](https://github.com/abernier/skills/commit/eaac659d787f4c7d98060fe4052a41d9485d9624) Thanks [@abernier](https://github.com/abernier)! - Ship the performance bench harness — `tracerbench`, `profiler` and the
+  `lgtm-perf` runner — as `scripts/` a repo can depend on by git ref, instead of
+  each repo carrying its own fork of it.
+  
+  The scripts now resolve two roots rather than one: the package directory they
+  live in, for their siblings, and the repository being measured, for everything
+  else. `lgtm-perf.sh` reads its local gate widths from `.claude/bench.json`
+  (`thresholds.localTracerbenchMs`, `thresholds.localTracerbenchFrames`) instead
+  of hard-coding one repo's.
+
 ## 0.2.0
 
 ### Minor Changes
