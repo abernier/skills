@@ -1,6 +1,6 @@
 {
   "name": "@abernier/skills",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "files": ["scripts", "!scripts/branchstat*", "!scripts/release-tag.sh", "!scripts/sync-plugin-version.mts"],
