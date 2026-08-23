@@ -69,6 +69,71 @@ A [Claude Code plugin](https://code.claude.com/docs/en/plugins).
   Pin the exact tag while this is 0.x: `v0` moves, and a 0.x minor is allowed to
   break. From 1.0 on, `v1` is the ref to use.
 
+### Bench harness
+
+Two benches over one pipeline, for a repo that wants a perf gate on its PRs.
+`tracerbench` measures wall-clock durations of Playwright `test.step()` marks.
+`profiler` measures React re-renders through `<React.Profiler>`, and gates only
+on components it can resolve in your own source. Each builds the current branch
+and a `git worktree` of the control branch, benches both sides on paired ports,
+diffs the two reports and renders a sticky PR comment.
+
+The pipeline ships here; the scenarios stay yours — `e2e/*.spec.ts`,
+`playwright.*.config.ts`, and the `test:tracerbench` / `test:profiler` scripts
+that run them.
+
+```
+pnpm add -D github:abernier/skills#v0.3.0
+```
+
+```json
+{
+  "scripts": {
+    "tracerbench": "bash node_modules/@abernier/skills/scripts/tracerbench.sh",
+    "profiler": "bash node_modules/@abernier/skills/scripts/profiler.sh",
+    "LGTM:perf": "bash node_modules/@abernier/skills/scripts/lgtm-perf.sh"
+  }
+}
+```
+
+`tsx` has to be yours: the comparers run under the `node_modules/.bin/tsx` of
+the repo being measured, and this package ships none of its own.
+
+A single-package repo — one `src`, one `dist` — needs no configuration at all.
+Everything that differs is a value in `.claude/bench.json`, never a fork in the
+code:
+
+```json
+{
+  "sourceRoots": ["packages/www/src", "packages/ds/src"],
+  "shadcnUiRoot": "packages/ds/src/components/ui/",
+  "workspacePackages": ["packages/www", "packages/ds"],
+  "distDir": "packages/www/dist",
+  "controlWorktreeCopy": ["e2e/marks.ts"],
+  "thresholds": { "tracerbenchMs": 50, "tracerbenchFrames": 30 }
+}
+```
+
+<details>
+<summary>Every key, and what it defaults to</summary>
+
+Every key is optional, and an absent key adds nothing rather than disabling
+anything.
+
+| key | default | what it is |
+| --- | --- | --- |
+| `sourceRoots` | `["src"]` | where your own components live. The profiler gates on these and nothing else — a regression outside them is reported, never blocking. |
+| `shadcnUiRoot` | `"src/components/ui/"` | the directory shadcn's CLI vendors into. Never actionable: the fix for one of these regressing lives at its call site. |
+| `workspacePackages` | none | packages whose own `node_modules` the control worktree needs symlinked, alongside the root one. A single-package repo names none. |
+| `distDir` | `"dist"` | where `pnpm run build` leaves the bundle. |
+| `controlWorktreeCopy` | none | extra repo-relative files the control worktree needs, on top of the specs and configs every repo copies — whatever else your spec imports. |
+| `thresholds.tracerbenchMs` | `20` | wall-clock regression gate, percent. |
+| `thresholds.tracerbenchFrames` | the ms width | rendered-frames gate, percent. |
+| `thresholds.localTracerbenchMs` | `10` | the same gate for `lgtm-perf.sh`, which runs about twice as tight as CI on the grounds that a quiet machine deserves a stricter bar. |
+| `thresholds.localTracerbenchFrames` | unset — `tracerbenchFrames` stands | frames, for that local gate. |
+
+</details>
+
 ## Install
 
 ```
@@ -97,7 +162,7 @@ One gate, the same one CI runs:
 
 ```
 pnpm install
-pnpm run lgtm      # typecheck, shellcheck, the branchstat suite
+pnpm run lgtm      # typecheck, shellcheck, the bash suites, vitest
 ```
 
 `branchstat` carries its own suite because the bucketing regexes and the module
@@ -107,7 +172,14 @@ TypeScript it pipes into. `tsc` is there because Node *strips* the report's
 types at run time and checks nothing; `erasableSyntaxOnly` keeps the file to
 what Node can strip.
 
-The toolchain is this repo's own — the plugin installs nothing in yours.
+`profiler-compare` carries a vitest suite for the same reason from the other
+side: it is a real module — a verdict, a normalisation, a codebase filter that
+shells out to git and grep — and driving it as a subprocess is the only way to
+assert on the exit code CI reads.
+
+The toolchain is this repo's own. The Claude Code half of the plugin installs
+nothing in yours; the bench harness is the one part a repo depends on, and it
+brings no dependencies with it.
 
 ## Release
 
