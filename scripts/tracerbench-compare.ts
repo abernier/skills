@@ -125,7 +125,7 @@ for (let i = 0; i < args.length; i++) {
 
 if (!controlPath || !experimentPath) {
   console.error(
-    "Usage: tsx scripts/tracerbench-compare.ts <control.json> <experiment.json> [--md <output.md>] [--threshold <percent>] [--frames-threshold <percent>]",
+    "Usage: tsx node_modules/@abernier/skills/scripts/tracerbench-compare.ts <control.json> <experiment.json> [--md <output.md>] [--threshold <percent>] [--frames-threshold <percent>]",
   );
   process.exit(1);
 }
@@ -243,7 +243,7 @@ if (
 for (const side of [controlCounters, experimentCounters]) {
   if (side && side.schemaVersion > KNOWN_COUNTERS_SCHEMA_VERSION) {
     console.error(
-      `Counters schemaVersion ${side.schemaVersion} is newer than this script supports (${KNOWN_COUNTERS_SCHEMA_VERSION}). Update scripts/tracerbench-compare.ts.`,
+      `Counters schemaVersion ${side.schemaVersion} is newer than this script supports (${KNOWN_COUNTERS_SCHEMA_VERSION}). Update @abernier/skills' tracerbench-compare.ts.`,
     );
     process.exit(2);
   }

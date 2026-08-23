@@ -228,7 +228,7 @@ for (let i = 0; i < args.length; i++) {
 
 if (!controlPath || !experimentPath) {
   console.error(
-    "Usage: tsx scripts/profiler-compare.ts <control.json> <experiment.json> \\\n" +
+    "Usage: tsx node_modules/@abernier/skills/scripts/profiler-compare.ts <control.json> <experiment.json> \\\n" +
       "  [--md <output.md>] [--threshold <percent>] [--min-commits <n>]\\\n" +
       "  [--component-threshold <percent>] [--component-min-renders <n>] [--soft]",
   );
@@ -254,7 +254,7 @@ if (cv !== ev) {
 }
 if (ev > KNOWN_SCHEMA_VERSION) {
   console.error(
-    `Report schemaVersion ${ev} is newer than this script supports (${KNOWN_SCHEMA_VERSION}). Update scripts/profiler-compare.ts.`,
+    `Report schemaVersion ${ev} is newer than this script supports (${KNOWN_SCHEMA_VERSION}). Update @abernier/skills' profiler-compare.ts.`,
   );
   process.exit(2);
 }
