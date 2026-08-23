@@ -3,20 +3,26 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
+  "files": ["scripts", "!scripts/branchstat*", "!scripts/release-tag.sh", "!scripts/sync-plugin-version.mts"],
   "packageManager": "pnpm@10.33.4",
   "description": "Toolchain for the plugin's own scripts. The plugin itself installs nothing.",
   "scripts": {
     "changeset": "changeset",
     "changeset:version": "changeset version && node scripts/sync-plugin-version.mts",
     "typecheck": "tsc --noEmit",
-    "lint": "shellcheck --severity=warning scripts/branchstat.sh scripts/branchstat.test.sh scripts/release-tag.sh",
-    "test": "bash scripts/branchstat.test.sh",
+    "lint": "shellcheck --severity=warning scripts/branchstat.sh scripts/branchstat.test.sh scripts/release-tag.sh scripts/_bench-common.sh scripts/_bench-common.test.sh scripts/_bench-config.sh scripts/lgtm-perf.sh scripts/profiler.sh scripts/tracerbench.sh",
+    "test": "bash scripts/branchstat.test.sh && bash scripts/_bench-common.test.sh && vitest run",
     "lgtm": "pnpm run typecheck && pnpm run lint && pnpm run test && echo 'LGTM!'"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.0",
     "@changesets/cli": "^3.0.1",
     "@types/node": "^26.2.0",
-    "typescript": "^7.0.2"
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   }
 }
