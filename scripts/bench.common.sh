@@ -8,7 +8,8 @@
 #                          comment, linking to the commit + run when running in
 #                          GitHub Actions, and naming the command that
 #                          reproduces the numbers locally.
-#   acquire_bench_lock   — take the repository-wide "one bench at a time" lock.
+#   acquire_bench_lock   — take the machine-wide "one bench at a time" lock,
+#                          waiting for the bench already holding it.
 #   release_bench_lock   — give it back.
 #   kill_bench_ports     — free the ports this bench binds, whatever holds them.
 #   trap_teardown        — install teardown traps that actually stop the script.
@@ -90,26 +91,52 @@ emit_comment_footer() {
   } >> "$comment_file"
 }
 
-# ── One bench at a time ──────────────────────────────────────────────────────
+# ── One bench at a time, on the whole machine ────────────────────────────────
 #
-# Both harnesses `rm -rf` a results directory and bind fixed ports (4200/4201
-# for tracerbench, 4300/4301 for the profiler). Two runs at once therefore
-# delete each other's reports and measure each other's CPU — and the profiler
-# reuses an already-listening dev server locally, so the second run happily
-# benches the *other* branch's code. Every one of those failures is silent: it
-# produces a plausible wrong number rather than an error.
+# There are two reasons to serialise a bench, and they have different scopes.
 #
-# So a bench takes an exclusive lock first, and refuses to start rather than
-# corrupt a run in flight. `mkdir` is the primitive: on every POSIX filesystem
-# it succeeds for exactly one caller, with no window between test and create.
+# The narrow one is resources: both harnesses `rm -rf` a results directory and
+# bind fixed ports (4200/4201 for tracerbench, 4300/4301 for the profiler), and
+# the profiler reuses an already-listening dev server locally, so a second run
+# happily benches the *other* branch's code. Those collide only within one repo.
 #
-# The lock lives in the *common* git directory, which every worktree of the
-# repository shares — the ports do not care which worktree bound them, so
-# neither can the lock. That also keeps it out of the working tree, so there is
-# nothing to gitignore.
+# The wide one is the CPU, and it respects no repo boundary: two benchmarks
+# sharing a machine measure each other. Measured here — two agents benching two
+# unrelated repos at once, different ports, different result directories, no
+# resource conflict at all: 3 of 4 control legs died on 120 s Playwright
+# timeouts with the load average at 10.96, and a run comparing identical code
+# against itself reported +14.5% and breached its own +10% gate. Starvation, not
+# collision. Every one of these failures is silent: it produces a plausible
+# wrong number rather than an error.
+#
+# So the lock is machine-wide — `${TMPDIR:-/tmp}/bench.lock`, outside any repo,
+# the same path for every repo on the machine. `$TMPDIR` is already per-user on
+# macOS, and both it and `/tmp` are cleared on reboot, so no phantom lock
+# survives one. `mkdir` is the primitive: on every POSIX filesystem it succeeds
+# for exactly one caller, with no window between test and create.
+#
+# And because the lock now spans repos, a second bench **waits** rather than
+# refuses. Refusing was right when the only way to hit it was launching the same
+# bench twice; machine-wide it would mean benching one repo kills another repo's
+# gate instead of letting it take its turn. The wait is bounded, says who it is
+# waiting for, and `BENCH_LOCK_TIMEOUT=0` opts back out into the old refusal —
+# for CI, or for anyone who would rather be told than queued.
 BENCH_LOCK=""
 
-# Take the lock, or exit 1 explaining who holds it.
+# How long a bench waits for the one already running, in seconds. Long enough
+# for another repo's whole `lgtm-perf` (two benches, four legs) to finish, short
+# enough that a wedged bench does not hang a gate for an afternoon.
+BENCH_LOCK_TIMEOUT_DEFAULT=1200
+
+# Seconds as a human reads them: `45s`, `2m30s`, `20m0s`.
+bench_lock_duration() {
+  if (( $1 < 60 )); then echo "$1s"; else echo "$(($1 / 60))m$(($1 % 60))s"; fi
+}
+
+# Take the lock — waiting for the bench already holding it — or exit 1.
+#
+# `BENCH_LOCK_TIMEOUT` (seconds) overrides the bound; `0` refuses immediately
+# instead of waiting.
 #
 # NOTE for callers: this installs an EXIT/INT/TERM trap that releases the lock.
 # A script that later sets its own trap replaces it — combine them instead:
@@ -117,40 +144,63 @@ BENCH_LOCK=""
 #   trap 'cleanup; release_bench_lock' EXIT INT TERM
 #
 # Args:
-#   $1 — path to the repo root
-#   $2 — label naming the holder in the refusal message (e.g. "tracerbench")
+#   $1 — label naming the holder in the messages (e.g. "tracerbench")
 acquire_bench_lock() {
-  local root_dir="$1"
-  local label="$2"
-  local lock
-  lock="$(git -C "$root_dir" rev-parse --path-format=absolute --git-common-dir)/bench.lock"
+  local label="$1"
+  local lock="${TMPDIR:-/tmp}"
+  lock="${lock%/}/bench.lock"
+  local timeout="${BENCH_LOCK_TIMEOUT:-$BENCH_LOCK_TIMEOUT_DEFAULT}"
+  local waited=0 announced=""
 
-  if ! mkdir "$lock" 2>/dev/null; then
+  while ! mkdir "$lock" 2>/dev/null; do
     local owner="an unknown run" holder_pid=""
     [[ -r "$lock/owner" ]] && owner="$(cat "$lock/owner")"
     [[ -r "$lock/pid" ]] && holder_pid="$(cat "$lock/pid")"
 
-    # A run killed hard leaves the directory behind. Reclaim it, or one Ctrl-C
-    # blocks every future bench until someone deletes a file they have never
-    # heard of.
+    # A run killed hard never reaches its teardown, so the directory outlives it
+    # holding a pid nobody is running any more. Reclaim it, or one Ctrl-C blocks
+    # every future bench until someone deletes a file they have never heard of.
     if [[ -n "$holder_pid" ]] && ! kill -0 "$holder_pid" 2>/dev/null; then
       echo "🧹 Reclaiming a stale bench lock left by $owner"
       rm -rf "$lock"
-      mkdir "$lock" 2>/dev/null || {
-        echo "❌ Could not take the bench lock at $lock"
-        exit 1
-      }
-    else
+      mkdir "$lock" 2>/dev/null && break
+      # Either someone else won the race for the freed lock, or the directory
+      # would not go. Fall through and wait, so a lock that cannot be removed
+      # times out rather than spinning here forever.
+    fi
+
+    if (( timeout <= 0 )); then
       echo "❌ A bench is already running — $owner"
-      echo "   Benches share ports and result directories, so they run one at a time."
+      echo "   Two benches sharing a machine measure each other, so they run one at a time."
       echo "   Wait for it to finish, or remove $lock if you know it is gone."
       exit 1
     fi
-  fi
+
+    if (( waited >= timeout )); then
+      echo "❌ Gave up after $(bench_lock_duration "$waited") waiting for the bench holding the lock — $owner"
+      echo "   It still holds $lock. Stop it, or remove that directory if it is gone."
+      exit 1
+    fi
+
+    if [[ -z "$announced" ]]; then
+      echo "⏳ Waiting for a bench already running — $owner"
+      echo "   Two benches sharing a machine measure each other, so they run one at a time,"
+      echo "   whichever repo they are in. Waiting up to $(bench_lock_duration "$timeout")."
+      announced=1
+    elif (( waited % 30 == 0 )); then
+      echo "   still waiting after $(bench_lock_duration "$waited") of $(bench_lock_duration "$timeout") — $owner"
+    fi
+
+    sleep 1
+    waited=$((waited + 1))
+  done
 
   BENCH_LOCK="$lock"
   echo "$label, pid $$, started $(date '+%H:%M:%S')" > "$lock/owner"
   echo "$$" > "$lock/pid"
+  if (( waited > 0 )); then
+    echo "✅ Took the bench lock after $(bench_lock_duration "$waited")"
+  fi
   trap release_bench_lock EXIT INT TERM
 }
 

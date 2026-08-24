@@ -120,15 +120,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Ports and result directories are shared, so a second bench must refuse to
-# start rather than quietly corrupt this one. Everything the lock and the run
-# leave behind comes back down through the one teardown installed just below.
+# One bench at a time on this machine: within a repo they share ports and result
+# directories, and across repos they still share the CPU they are timing. So
+# this waits for whatever is running before it starts — see the lock's own
+# header for the bound and how to refuse instead. Everything the lock and the
+# run leave behind comes back down through the one teardown installed just below.
 #
 # After the parser on purpose: `bash scripts/tracerbench.sh -- --nope` must die
 # in the parser without ever taking the lock — `bench.common.test.sh` runs
 # exactly that, and a lock taken first would litter a lock directory on every
 # test run and could collide with a real bench.
-acquire_bench_lock "$ROOT_DIR" "tracerbench"
+acquire_bench_lock "tracerbench"
 
 # Set once the control worktree exists; until then `cleanup` has nothing to do.
 WORKTREE_DIR=""

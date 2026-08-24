@@ -67,6 +67,15 @@ fail(){
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# Every case below runs a real bench, and a bench takes the machine-wide lock at
+# `${TMPDIR:-/tmp}/bench.lock`. The cases are sequential and each bench releases
+# the lock on its way out, so the suite never contends with itself — but a bench
+# running outside it holds the very same lock, and the suite would queue behind
+# it for minutes and then time out. Pointing TMPDIR at this run's scratch
+# directory gives the suite a lock private to it: it still serialises its own
+# benches, and nothing else can hold it.
+export TMPDIR="$tmp"
+
 # How many rows the control commit renders, and how many the "real regression"
 # cases move it to. Both sides have to clear `--component-min-renders` for the
 # profiler to gate at all, and the ratio has to clear a wall-clock width that a
