@@ -28,8 +28,8 @@
  * wall clock — so each gets its own.
  *
  * Which makes a width a property of the repo, not of this script: it is
- * recorded in `.claude/bench.json`, and the shell wrapper passes it in.  Reached without the
- * wrapper, this script gates at 20; and a repo whose spec writes no
+ * recorded in `bench.json`, and the shell wrapper passes it in.  Reached
+ * without the wrapper, this script gates at 20; and a repo whose spec writes no
  * `counters.json` gets the wall-clock comparison alone, with the frames and
  * draw-call columns dormant.
  */

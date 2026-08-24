@@ -25,8 +25,8 @@ SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "$ROOT_DIR" || exit 1
 
-# `bench_config` — the per-repo values, from `.claude/bench.json`. Reads
-# `$ROOT_DIR`, so it is sourced after it is set.
+# `bench_config` — the per-repo values, from `bench.json`. Reads `$ROOT_DIR`,
+# so it is sourced after it is set.
 # shellcheck source=./_bench-config.sh
 source "$SCRIPT_DIR/_bench-config.sh"
 

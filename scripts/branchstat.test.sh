@@ -75,6 +75,7 @@ bucket vite.config.mcp-app.ts config "a suffixed config is still a config"
 bucket eslint.config.ts config
 bucket lint-staged.config.mjs config
 bucket .prettierrc.json config
+bucket bench.json config "the bench harness's knobs, at the repo root"
 bucket .github/workflows/ci.yml config
 bucket .github/scripts/mark-bench-comment-stale.cjs config
 bucket .husky/pre-commit config

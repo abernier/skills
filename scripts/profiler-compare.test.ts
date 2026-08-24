@@ -120,9 +120,9 @@ beforeAll(() => {
   );
   initFixtureRepo(fixtureRepo);
   // The layout below is a workspace, so the fixture says so — the script reads
-  // its roots from `.claude/bench.json` and defaults to a single `src`.
+  // its roots from `bench.json` and defaults to a single `src`.
   writeFixtureFile(
-    ".claude/bench.json",
+    "bench.json",
     JSON.stringify({
       sourceRoots: ["packages/www/src", "packages/ds/src"],
       shadcnUiRoot: "packages/ds/src/components/ui/",
@@ -154,10 +154,10 @@ afterAll(() => {
 // A repo that says nothing
 // ---------------------------------------------------------------------------
 //
-// `.claude/bench.json` is optional, and its defaults are the single-package
-// case: one `src`, shadcn vendored under it. That is the shape the other repo
-// running this harness has, so it gets a fixture of its own — otherwise every
-// test here would exercise the configured path and the default could rot.
+// `bench.json` is optional, and its defaults are the single-package case: one
+// `src`, shadcn vendored under it. That is the shape the other repo running
+// this harness has, so it gets a fixture of its own — otherwise every test here
+// would exercise the configured path and the default could rot.
 
 let plainRepo: string;
 
@@ -802,7 +802,7 @@ const realRepoConfig: { sourceRoots?: string[]; shadcnUiRoot?: string } =
   (() => {
     try {
       return JSON.parse(
-        fs.readFileSync(path.join(REAL_REPO, ".claude", "bench.json"), "utf8"),
+        fs.readFileSync(path.join(REAL_REPO, "bench.json"), "utf8"),
       );
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
@@ -819,8 +819,8 @@ const realRepoConfig: { sourceRoots?: string[]; shadcnUiRoot?: string } =
  * not there" is *also* the misconfiguration this block exists to catch, so the
  * two are told apart by whether the repo claims a source tree at all:
  *
- *  - `.claude/bench.json` names `sourceRoots` → the repo claims one. Whether
- *    those roots exist, and whether they hold anything first-party, is
+ *  - `bench.json` names `sourceRoots` → the repo claims one. Whether those
+ *    roots exist, and whether they hold anything first-party, is
  *    `aFirstPartyComponent`'s business — and it throws when they do not.
  *  - No config but a `src/` → the same thing against the built-in default.
  *  - Neither → nothing here claims to be measurable. That is this package
@@ -905,7 +905,7 @@ function aFirstPartyComponent(): { name: string; file: string } {
   if (usable.length === 0) {
     throw new Error(
       `No first-party component found under ${roots.join(", ")}. ` +
-        `Either .claude/bench.json names roots this repo no longer has, or no ` +
+        `Either bench.json names roots this repo no longer has, or no ` +
         `.tsx under them defines the component its basename names.`,
     );
   }
@@ -915,10 +915,10 @@ function aFirstPartyComponent(): { name: string; file: string } {
 describeAgainstThisRepo("profiler-compare against the repo it runs in", () => {
   it("gates on a component the declared source roots really contain", () => {
     // Nothing here is written down: the subject comes from the roots
-    // `.claude/bench.json` declares. Move the source tree without updating the
-    // config and there is no subject to find, which throws; point the config
-    // at a directory that exists but holds nothing first-party and the gate
-    // stops firing. Either way this goes red, and no fixture can tell.
+    // `bench.json` declares. Move the source tree without updating the config
+    // and there is no subject to find, which throws; point the config at a
+    // directory that exists but holds nothing first-party and the gate stops
+    // firing. Either way this goes red, and no fixture can tell.
     const subject = aFirstPartyComponent();
     const ctrl = makeReport([
       makeStep("orbit", 20, 10, {

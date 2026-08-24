@@ -182,8 +182,8 @@ first-party files only, and this one lives under `node_modules`:
 comparers.
 
 A single-package repo — one `src`, one `dist` — needs no configuration at all.
-Everything that differs is a value in `.claude/bench.json`, never a fork in the
-code:
+Everything that differs is a value in `bench.json` at your repository root,
+never a fork in the code:
 
 ```json
 {
@@ -220,7 +220,7 @@ anything.
 
 `profiler-compare.test.ts` ships with the package, and its last block is the one
 only you can run: it derives its subject from your `sourceRoots` at run time,
-and goes red when the source tree moved and `.claude/bench.json` did not — the
+and goes red when the source tree moved and `bench.json` did not — the
 misconfiguration that otherwise leaves the gate measuring nothing. One plugin
 collects it:
 
