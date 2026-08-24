@@ -83,7 +83,7 @@ The pipeline ships here; the scenarios stay yours — `e2e/*.spec.ts`,
 that run them.
 
 ```
-pnpm add -D github:abernier/skills#v0.4.0
+pnpm add -D github:abernier/skills#v0.4.1
 ```
 
 ```json
