@@ -286,6 +286,20 @@ there would miss yours.
 
 </details>
 
+#### One bench at a time
+
+Two benchmarks sharing a machine measure each other, whichever repos they are
+in. So a bench takes a machine-wide lock — `${TMPDIR:-/tmp}/bench.lock` — and a
+second one **waits** for it, naming the run it is queued behind. The wait is
+bounded at 20 minutes, after which it gives up and exits non-zero.
+
+`BENCH_LOCK_TIMEOUT` is the knob, in seconds. `0` refuses immediately instead of
+queueing — a CI runner benches alone, so there is nothing to wait for:
+
+```sh
+BENCH_LOCK_TIMEOUT=0 pnpm run LGTM:perf
+```
+
 #### On every PR
 
 Both benches on every pull request, without vendoring the pipeline: the workflow

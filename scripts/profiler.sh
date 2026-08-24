@@ -122,16 +122,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Ports and result directories are shared, so a second bench must refuse to
-# start rather than quietly corrupt this one — and locally Playwright would
-# reuse a dev server the other run started, benching the wrong branch.
-# Everything it leaves behind comes back down through the teardown below.
+# One bench at a time on this machine: within a repo they share ports and result
+# directories — locally Playwright would reuse a dev server the other run
+# started, benching the wrong branch — and across repos they still share the CPU
+# they are timing. So this waits for whatever is running before it starts; see
+# the lock's own header for the bound and how to refuse instead. Everything it
+# leaves behind comes back down through the teardown below.
 #
 # After the parser on purpose: `bash scripts/profiler.sh -- --nope` must die in
 # the parser without ever taking the lock — `bench.common.test.sh` runs exactly
 # that, and a lock taken first would litter a lock directory on every test run
 # and could collide with a real bench.
-acquire_bench_lock "$ROOT_DIR" "profiler"
+acquire_bench_lock "profiler"
 
 # Set once the control worktree exists; until then `cleanup` has nothing to do.
 # Declared up front because the experiment side benches — and binds a port —

@@ -40,6 +40,12 @@ fail(){ printf '  \033[31m✗\033[0m %s\n' "$1"; fails=$((fails + 1)); }
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# This suite runs the real `profiler.sh`, which takes the machine-wide bench
+# lock — and it runs inside `lgtm`, which has to stay fast. Pointing TMPDIR at
+# this run's scratch directory gives it a lock of its own, so it neither queues
+# behind a bench someone is running here nor blocks one.
+export TMPDIR="$tmp"
+
 # A repository the profiler can bench, with two control branches:
 #
 #   control-legacy  — predates `e2e/fixture.ts`, so the experiment's spec, copied
