@@ -1,5 +1,137 @@
 # @abernier/skills
 
+## 0.6.0
+
+### Minor Changes
+
+- [#22](https://github.com/abernier/skills/pull/22) [`50f51d2`](https://github.com/abernier/skills/commit/50f51d27a224759a8dec639d181b0d80673a3ace) Thanks [@abernier](https://github.com/abernier)! - The profiler's render-cause recorder and the Playwright `globalSetup` that
+  bundles it now ship here, at `@abernier/skills/profiler-scan`.
+  
+  Both files were already the plugin's in everything but location. `profiler.sh`
+  hardcoded both names, and one of its two `cp`s into the control worktree was
+  unconditional — a consumer that deleted either one broke the bench under `set
+  -euo pipefail`. The two repos running this harness carried them byte-identically:
+  the recorder to the byte, the setup down to a single word in a single comment.
+  A file every consumer must have, at a path the harness already knows, is not the
+  consumer's file.
+  
+  They ship in different shapes, because they are loaded in different ways.
+  `profiler-scan.setup.mjs` is imported — Playwright loads it as `globalSetup`, and
+  a spec reads `SCAN_BUNDLE_PATH` off it — so it is `.mjs` with
+  `profiler-scan.setup.d.mts` beside it, the same reason `gestures.mjs` is: Node
+  strips types in first-party files only, and Playwright does not transform
+  `node_modules`. `profiler-scan.injected.ts` is never imported by anything;
+  esbuild reads it as an entry point and transpiles it itself, so it stays
+  TypeScript and keeps its types.
+  
+  Both now resolve their dependencies from the repo being measured rather than
+  from this package — `esbuild` through a `require` rooted at that repo's
+  `package.json`, `bippy` through esbuild's `nodePaths` — because under pnpm this
+  package's real path is a store directory whose siblings are its own
+  dependencies. The bundle's default location moved for the same reason: it lands
+  under the measured repo's `profiler-results/`, never beside the package. And
+  `profiler.sh` no longer copies the setup into the control worktree: that worktree
+  resolves the package through the `node_modules` it is already given, exactly as
+  it does for `@abernier/skills/gestures`.
+  
+  `$PROFILER_SCAN_BUNDLE` is unchanged and still the escape hatch. Pointed at a
+  file that already exists, `globalSetup` builds nothing and trusts it — which is
+  how `profiler` hands the experiment and the control one byte-identical recorder,
+  and how a repo that needs a recorder of its own swaps one in.
+  
+  BREAKING: delete `e2e/profiler-scan.setup.ts` and `e2e/profiler-scan.injected.ts`,
+  point `globalSetup` at `"@abernier/skills/profiler-scan"` in
+  `playwright.profiler.config.ts`, and import `SCAN_BUNDLE_PATH` from there in your
+  spec. Keep `bippy` and `esbuild` as your own devDependencies — the bundle is
+  still built from your tree. No migration.
+
+- [#20](https://github.com/abernier/skills/pull/20) [`49eacf0`](https://github.com/abernier/skills/commit/49eacf0e68c737c90e7346028d0cc7543a29af44) Thanks [@abernier](https://github.com/abernier)! - The human-like Playwright gestures a bench spec is written with now ship here,
+  importable from `@abernier/skills/gestures`.
+  
+  Both consumers carried the same `e2e/gestures.ts`, and the first two thirds of
+  it were the same bytes on either side: a `smoothMove` that walks a line one
+  event at a time, and a `smoothDrag` that holds the button down for it. Neither
+  touches the app it lives in — that is the point of the file, so that
+  `profiler.sh` can put it next to the spec in a control worktree — which makes it
+  harness code sitting in two repos, drifting.
+  
+  The wheel arrived in three shapes: a `wheel` firing one event with modifiers, a
+  `smoothZoom` firing eight with `ctrlKey` hardcoded, a `smoothPan` looping
+  `page.mouse.wheel`. They collapse into two:
+  
+  ```ts
+  import { smoothDrag, wheel, wheelBurst } from "@abernier/skills/gestures";
+  
+  await smoothDrag(page, 200, 300, 600, 300, { steps: 40, stepDelay: 8 });
+  await wheelBurst(page, 400, 300, { deltaY: -400, ctrlKey: true }); // zoom
+  await wheelBurst(page, 400, 300, { deltaX: 300, ticks: 10, tickDelay: 25 }); // pan
+  ```
+  
+  `wheelBurst` is `wheel` n times at a point, and its deltas are the gesture's
+  totals rather than a per-notch amount — a hand rolls a wheel a distance. `wheel`
+  stays on `page.mouse.wheel` unmodified, so an unmodified wheel still scrolls the
+  page like a real notch, and hand-dispatches only when `ctrlKey` or `shiftKey`
+  are asked for, which Playwright's wheel drops. Both paths wait until the page
+  has the event, so the line after an `await` can assert on what it did;
+  Playwright's own wheel resolves a frame before that, which is a race in every
+  spec that has ever read a listener's log straight after one.
+  
+  They ship as `.mjs` with types beside them. A `.ts` file under `node_modules`
+  throws `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` the moment a spec imports
+  it — the rule `profiler-aggregate.ts` already states from the other side — and
+  Playwright transforms no `node_modules` either. The package still has no build
+  step.
+  
+  `profiler.sh` stops copying `e2e/gestures.ts` into the control worktree. The
+  worktree resolves the package through the `node_modules` it is already given,
+  the same one its `playwright` binary comes from. A repo whose gestures really
+  are its app's — reaching for its state, building its scene — keeps that file and
+  names it in `controlWorktreeCopy`, like everything else a spec imports.
+
+- [#21](https://github.com/abernier/skills/pull/21) [`b938e64`](https://github.com/abernier/skills/commit/b938e64a62f19ecb4d9f26f79a5e01e9740d5922) Thanks [@abernier](https://github.com/abernier)! - The bench pipeline is now a reusable workflow, `.github/workflows/perf.yml`, so
+  a repo that wants both benches on its PRs calls it instead of copying it.
+  
+  The two repos running this harness carried a `perf.yml` of 173 and 153 lines
+  that were the same file twice: the same concurrency group, the same trigger
+  types, the same draft gate, the same stale-marker, the same "ensure the comment
+  file exists" heredoc, the same sticky comment, the same artifact upload. What
+  genuinely differed was four values — whether a regression reddens the PR, the
+  timeout, the artifact retention, and the draft gate — and one thing that cannot
+  move, the `paths:` filter, because which files are worth a bench run is the one
+  question only the repo can answer. Everything else was drift waiting to happen,
+  and it had already happened: the action pins were two major versions apart, and
+  one copy still guarded three steps on `github.event_name == 'pull_request'`
+  under a trigger that is already pull-request-only.
+  
+  So the values that actually diverge are `inputs` — `strict`, `timeout-minutes`
+  and `node-version-file` — and the caller keeps `on:`, its `paths:` and its
+  `concurrency:` group. That last one stays behind on purpose rather than by
+  omission: `github.workflow` inside a called workflow resolves to the *caller's*
+  workflow name, so a group built from it reads correctly only where the trigger
+  it cancels lives.
+  
+  The two benches now run as two legs of one matrix instead of two hand-copied
+  jobs. Drift between two copies of a pipeline is the bug this change exists to
+  stop, and it is no less a bug inside one file than across two repositories —
+  the two jobs it replaces had already diverged in their comments.
+  
+  `mark-bench-comment-stale.cjs` moves here too, byte-identical in both repos and
+  therefore never theirs. The workflow checks this repository out at
+  `github.job_workflow_sha` — the commit the workflow file itself was read from,
+  so the workflow and the script it runs can never be two versions of each other —
+  and requires it from there, the same way `branchstat.yml` runs
+  `scripts/branchstat.sh`. It is CI-only and stays out of `package.json`'s
+  `files`: nothing ever resolves it from `node_modules`.
+  
+  The workflow installs pnpm, Node and the Playwright browsers itself rather than
+  calling a `./.github/actions/setup` composite action in the caller. It has no
+  choice — a relative `uses:` inside a called workflow resolves against whatever
+  is checked out in the workspace, which is the caller's repo — and it is also
+  what finally puts the action pins in one place. A caller now provides a
+  `.nvmrc`, a `pnpm-lock.yaml` and the `tracerbench` / `profiler` bins, and
+  nothing else; `node-version-file` is an input for a repo that pins Node
+  somewhere other than `.nvmrc`.
+
 ## 0.5.0
 
 ### Minor Changes
