@@ -9,8 +9,10 @@ set -euo pipefail
 #     by a runtime-injected bippy recorder — see `e2e/profiler-scan.injected.ts`
 #   - coarse <React.Profiler> zone commit counts (advisory only)
 #
-# Diffing happens via `scripts/profiler-compare.ts`. Mirrors
-# `scripts/tracerbench.sh` for dev/CI parity.
+# The spec writes one file per side: its raw commit log, at
+# `$PROFILER_COMMITS`. `profiler-aggregate.ts` folds that into the per-component
+# report, and `profiler-compare.ts` diffs the two reports. Both run through the
+# measured repo's own `tsx`. Mirrors `scripts/tracerbench.sh` for dev/CI parity.
 #
 # Unlike TracerBench, this runs against `vite dev` (not a production build):
 # `<React.Profiler>` only emits `onRender` events under a development build of
@@ -123,6 +125,24 @@ bench_teardown() {
 }
 trap_teardown bench_teardown
 
+# Fold one side's raw commit log into the report `profiler-compare.ts` reads.
+# A side that produced no commit log ran a spec that failed or predates the
+# harness — the compare step below already has an answer for that, so skip it
+# and let it speak. A commit log that exists but cannot be folded is a broken
+# contract instead, and `profiler-aggregate.ts` exits non-zero, which stops the
+# run: an empty aggregate would read as "no regressions".
+aggregate_side() {
+  local side="$1"
+  local commits="$RESULTS_DIR/$side/commits.json"
+  if [[ ! -f "$commits" ]]; then
+    echo "⚠️  No $side commit log ($commits) — nothing to aggregate."
+    return 0
+  fi
+  echo "⏳ Aggregating $side commit log…"
+  "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler-aggregate.ts" \
+    "$commits" "$RESULTS_DIR/$side/report.json"
+}
+
 CURRENT_BRANCH="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD)"
 echo ""
 echo "🧪 Profiler — local run"
@@ -156,10 +176,11 @@ echo "⏳ Benchmarking experiment ($CURRENT_BRANCH)…"
 (
   cd "$ROOT_DIR"
   PROFILER_PORT=$EXPERIMENT_PORT \
-  PROFILER_REPORT="$RESULTS_DIR/experiment/report.json" \
+  PROFILER_COMMITS="$RESULTS_DIR/experiment/commits.json" \
   PROFILER_SCAN_BUNDLE="$SCAN_BUNDLE" \
   pnpm run test:profiler
 ) || true
+aggregate_side experiment
 echo ""
 
 # ── 2. Benchmark control (target branch via worktree) ───────────────────────
@@ -213,10 +234,6 @@ cp "$ROOT_DIR/e2e/profiler-scan.setup.ts" "$WORKTREE_DIR/e2e/profiler-scan.setup
 # the import resolves when the control branch predates the shared module.
 cp "$ROOT_DIR/e2e/gestures.ts" "$WORKTREE_DIR/e2e/gestures.ts"
 cp "$ROOT_DIR/playwright.profiler.config.ts" "$WORKTREE_DIR/playwright.profiler.config.ts"
-# `profiler-aggregate`, which the spec imports, is deliberately *not* copied:
-# it lives in this package, and the worktree's `node_modules` is a symlink to
-# the experiment side's, so the package specifier already resolves to the
-# working tree's copy. Only the repo's own files have to travel with the spec.
 # Whatever else this repo's spec reaches for, on top of that core. Same reason
 # every time: the control branch may predate the module, so the working tree's
 # copy has to travel with the spec.
@@ -229,10 +246,11 @@ echo "⏳ Benchmarking control ($CONTROL_BRANCH)…"
 (
   cd "$WORKTREE_DIR"
   PROFILER_PORT=$CONTROL_PORT \
-  PROFILER_REPORT="$RESULTS_DIR/control/report.json" \
+  PROFILER_COMMITS="$RESULTS_DIR/control/commits.json" \
   PROFILER_SCAN_BUNDLE="$SCAN_BUNDLE" \
   "$WORKTREE_DIR/node_modules/.bin/playwright" test --config playwright.profiler.config.ts
 ) || true
+aggregate_side control
 # Free the worktree before the compare step (the teardown would also run it on
 # exit, but cleaning up early reclaims disk while we still have work to do).
 cleanup

@@ -83,7 +83,7 @@ The pipeline ships here; the scenarios stay yours — `e2e/*.spec.ts`,
 that run them.
 
 ```
-pnpm add -D github:abernier/skills#v0.3.0
+pnpm add -D github:abernier/skills#v0.4.0
 ```
 
 ```json
@@ -96,8 +96,85 @@ pnpm add -D github:abernier/skills#v0.3.0
 }
 ```
 
-`tsx` has to be yours: the comparers run under the `node_modules/.bin/tsx` of
-the repo being measured, and this package ships none of its own.
+`tsx` has to be yours: every script here runs under the `node_modules/.bin/tsx`
+of the repo being measured, and this package ships none of its own.
+
+#### What the profiler spec writes
+
+The profiler runs in three moves — your spec records, `profiler-aggregate.ts`
+folds, `profiler-compare.ts` diffs — and the spec only owns the first. It writes
+its raw commit log, and nothing else, to `$PROFILER_COMMITS`:
+
+```ts
+const COMMITS_PATH =
+  process.env.PROFILER_COMMITS ??
+  path.resolve(process.cwd(), "profiler-results", "commits.json");
+
+fs.mkdirSync(path.dirname(COMMITS_PATH), { recursive: true });
+fs.writeFileSync(COMMITS_PATH, JSON.stringify(commitLog, null, 2));
+```
+
+That file is the report envelope, with every step carrying the recorder's raw
+`commits` — `window.__renderScan__.snapshot()`, verbatim — where the folded
+`byComponent` used to be:
+
+```jsonc
+{
+  "generatedAt": "2026-08-24T09:12:33.412Z", // ISO 8601
+  "url": "http://localhost:4301/",
+  "userAgent": "Mozilla/5.0 …",              // optional
+  "schemaVersion": 2,
+  "steps": [
+    {
+      "step": "orbit",                       // mark name
+      "durationMs": 1843,
+      "totalCommits": 12,                    // <React.Profiler> zones
+      "byId": {
+        "root": {
+          "mount": { "count": 1, "actualMs": 8.1, "baseMs": 9.4 },
+          "update": { "count": 11, "actualMs": 22.7, "baseMs": 31.2 }
+        }
+      },
+      "scanCommits": 11,                     // optional — commits.length otherwise
+      "commits": [
+        {
+          "renders": [
+            {
+              "name": "ZoomPan",
+              "cause": { "kind": "props", "changed": ["xywh"] },
+              "selfTime": 0.4,
+              "baseTime": 1.2
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+A `cause` is one of `{"kind":"mount"}`, `{"kind":"state"}`, `{"kind":"parent"}`,
+`{"kind":"force"}`, `{"kind":"props","changed":[…]}` or
+`{"kind":"context","names":[…]}`. Every other key — `diagnostics`, `failures`,
+whatever your repo adds — travels through untouched, top level and step level
+alike.
+
+`profiler.sh` folds each side itself, before the diff:
+
+```
+tsx node_modules/@abernier/skills/scripts/profiler-aggregate.ts \
+  profiler-results/experiment/commits.json \
+  profiler-results/experiment/report.json
+```
+
+A log it cannot fold — unparseable, no `steps`, a step with no `commits`, a
+render with a cause the recorder never produces — exits 2 and stops the bench.
+An empty aggregate would read as "no regressions".
+
+Do not `import` `profiler-aggregate.ts` from your spec. Node strips types in
+first-party files only, and this one lives under `node_modules`:
+`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`. It is a program, like the two
+comparers.
 
 A single-package repo — one `src`, one `dist` — needs no configuration at all.
 Everything that differs is a value in `.claude/bench.json`, never a fork in the
@@ -133,6 +210,28 @@ anything.
 | `thresholds.localTracerbenchFrames` | unset — `tracerbenchFrames` stands | frames, for that local gate. |
 
 </details>
+
+#### Running the compare suite against your own tree
+
+`profiler-compare.test.ts` ships with the package, and its last block is the one
+only you can run: it derives its subject from your `sourceRoots` at run time,
+and goes red when the source tree moved and `.claude/bench.json` did not — the
+misconfiguration that otherwise leaves the gate measuring nothing. Include the
+file, and narrow the default `exclude`, which covers `node_modules` and would
+hide it:
+
+```ts
+// vitest.config.ts
+export default defineConfig({
+  test: {
+    include: [
+      "src/**/*.test.ts",
+      "node_modules/@abernier/skills/scripts/profiler-compare.test.ts",
+    ],
+    exclude: ["**/dist/**"],
+  },
+});
+```
 
 ## Install
 
