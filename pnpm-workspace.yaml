@@ -1,0 +1,10 @@
+# The fixture app is a package of this workspace, not a directory this repo
+# happens to contain. That is what gives it a `node_modules/.bin` of its own,
+# and therefore a `dev` script that runs from inside it — pnpm does not walk up
+# to an ancestor `.bin`, so before this file the only way to start the fixture
+# was a `vite fixtures/…` script at the root, in the manifest that gets
+# published.
+#
+# Nothing here ships: `package.json#files` is an explicit list of `scripts/*`.
+packages:
+  - fixtures/app
