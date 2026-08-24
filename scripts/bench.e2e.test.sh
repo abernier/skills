@@ -391,6 +391,55 @@ make_repo() {
   git -C "$repo" branch control-ok
 }
 
+# Declare this package's own dependency block in the fixture's manifest, and
+# optionally `@abernier/skills` itself on top of it.
+#
+# Its own block because every one of those versions is already in the store this
+# checkout filled, so an install of it is offline and takes about a second — and
+# because the fixture needs exactly what it needs: a Playwright, a vite, a
+# React. `link:` for the package itself, there being no registry here; what
+# matters downstream is only that declaring it changes the lockfile.
+write_manifest_deps() {
+  node -e '
+    const fs = require("node:fs");
+    const [pkgDir, repoDir, withPlugin] = process.argv.slice(1);
+    const own = JSON.parse(fs.readFileSync(pkgDir + "/package.json", "utf8"));
+    const manifest = JSON.parse(fs.readFileSync(repoDir + "/package.json", "utf8"));
+    manifest.devDependencies = { ...own.devDependencies };
+    if (withPlugin) manifest.devDependencies["@abernier/skills"] = "link:" + pkgDir;
+    manifest.pnpm = own.pnpm;
+    fs.writeFileSync(repoDir + "/package.json", JSON.stringify(manifest, null, 2) + "\n");
+  ' "$pkg_dir" "$1" "${2:-}"
+}
+
+# The other shape of control worktree: one the harness has to install into.
+#
+# Every case above borrows this package's `node_modules` wholesale and commits
+# an empty lockfile, so both sides match and the control worktree just
+# symlinks. The PR that *adds* the bench to a repo cannot look like that —
+# adding a dependency changes the lockfile, and a worktree whose lockfile
+# differs gets `pnpm install --frozen-lockfile` and the control's own tree.
+#
+# So: a commit that has the app, has Playwright, has vite, and has never heard
+# of `@abernier/skills`, and a working tree — the experiment — that declares it.
+# That is tilt's exact situation, and one specifier away from sizematters'.
+installable_control() {
+  local repo="$1"
+  write_manifest_deps "$repo"
+  cp "$pkg_dir/pnpm-lock.yaml" "$repo/pnpm-lock.yaml"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm "dependencies, and no bench harness"
+  git -C "$repo" branch control-nodep
+
+  write_manifest_deps "$repo" with-plugin
+  # Real pnpm output on both sides, rather than a hand-edited YAML diff: what
+  # the harness reads is `diff -q` between the two, and a synthetic difference
+  # would prove the branch was taken without proving it was taken for the
+  # reason a consumer takes it. Nothing installs from this one — the experiment
+  # leg runs against the linked `node_modules` above.
+  (cd "$repo" && pnpm install --lockfile-only) > "$repo/lockfile-only.log" 2>&1
+}
+
 # `bench.json`, or none at all. Absent, the defaults stand — `src`, `dist`, and
 # no gate.
 write_bench_json() {
@@ -569,9 +618,40 @@ else
   fail "and it does not name the component that regressed"
 fi
 
-# Case 4 has no profiler half. Its gate widths are flags with defaults in
-# `profiler.compare.ts`, not `bench.json` keys — there is no absent key for the
-# absent-key rule to be about.
+# 4. A control that never had the harness. Its lockfile differs, so the
+#    worktree installs the control's own tree — Playwright, vite, React, and no
+#    `@abernier/skills`. The spec and the config running there are the
+#    experiment's and import it by name, so without the overlay the control leg
+#    dies at config load on `Cannot find package '@abernier/skills'` and the run
+#    reports no baseline: a red verdict about a PR that has nothing wrong with
+#    it. The control supplies the application, the experiment supplies the
+#    apparatus, and the two sides are comparable again.
+repo="$tmp/prof-installs-control"
+make_repo "$repo"
+installable_control "$repo"
+run_bench "$repo" profiler "${PROFILER_ARGS[@]}" --control control-nodep
+# First that the case is the case: a run that quietly took the symlink path
+# would pass these assertions while exercising none of this.
+if grep -qF "lockfile differs" "$log"; then
+  pass "a differing lockfile makes the control worktree install its own tree"
+else
+  fail "a differing lockfile did not make the control worktree install" "$log"
+fi
+if [[ $status -eq 0 ]]; then
+  pass "and a control that never had the harness is still measured"
+else
+  fail "and a control that never had the harness exited $status" "$log"
+fi
+if comment_says "$repo/profiler-results" "✅ PASS" \
+  && ! comment_says "$repo/profiler-results" "not a pass"; then
+  pass "and the comment is a comparison, not a one-sided summary"
+else
+  fail "and the comment is not a comparison" "$repo/profiler-results/comment.md"
+fi
+
+# The `--no-gate` case has no profiler half. Its gate widths are flags with
+# defaults in `profiler.compare.ts`, not `bench.json` keys — there is no absent
+# key for the absent-key rule to be about.
 
 echo ""
 printf 'ran in %ds\n' "$((SECONDS - started))"
