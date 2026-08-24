@@ -51,6 +51,8 @@ Not pre-emptively, and not for features that naturally colocate.
 
 Never edit what an external tool generates — vendored UI components, config scaffolds — without explicit developer approval. To change behaviour, wrap or compose from the outside. Every local divergence is a merge conflict with the next upgrade, and has to earn that cost with a stated reason.
 
+shadcn is the case that keeps coming up: install its components through its CLI, never hand-copy one into the tree. What the CLI never placed, it cannot upgrade either.
+
 ## New abstractions: the proportionality check
 
 Before committing a helper, an intermediate data structure or a wrapper layer:

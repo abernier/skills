@@ -29,6 +29,6 @@ Nobody re-litigates a decision they can read. That alone earns the record, wheth
 
 ## Docs are minimal
 
-Short, direct sentences — never a long one carrying three clauses. Prefer a fenced code block over prose: a runnable example says what a paragraph about it only approximates. Cut anything a reader can infer, and fold second-level detail into a `<details>` block so the main line stays readable. Keep related things next to each other, and say each thing once where it belongs.
+Short, direct sentences — never a long one carrying three clauses. Prefer a fenced code block over prose: a runnable example says what a paragraph about it only approximates. Cut anything a reader can infer, and fold second-level detail into a `<details>` block so the main line stays readable. Keep related things next to each other, and say each thing once where it belongs, so a reader rarely has to jump between sections to assemble one idea.
 
 For how to word a document an agent consumes, `mattpocock-skills`' `writing-for-agents` owns the subject.

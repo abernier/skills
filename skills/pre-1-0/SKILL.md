@@ -13,8 +13,7 @@ On a pre-1.0 project the developer leads, with no real users yet: **do not self-
 
 - Drop a removed URL param outright rather than teach a parser the old shape.
 - Let the validator strip unknown keys.
-- Version the store — bump the database name — when a shape becomes incompatible, so old data sits unread instead of half-read.
-- Write no migration, not even a dot-scoped one. That name stays reserved.
+- Write no migration — not even a dot-scoped `*.mig-*` file. That name stays reserved for when the stance sunsets.
 
 ## Sunset
 
