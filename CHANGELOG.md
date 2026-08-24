@@ -1,5 +1,23 @@
 # @abernier/skills
 
+## 0.6.1
+
+### Patch Changes
+
+- [#25](https://github.com/abernier/skills/pull/25) [`5ee8957`](https://github.com/abernier/skills/commit/5ee8957c814ae26315200ed14420aad6a2c3663e) Thanks [@abernier](https://github.com/abernier)! - `wheel` fires at the point it was given.
+  
+  The two paths disagreed about what `x, y` meant. The dispatched path — the one a
+  modifier selects — aims itself through `elementFromPoint`, so it always landed on
+  the point. The trusted path is `page.mouse.wheel`, which fires wherever the
+  pointer already happens to be, so it ignored both coordinates entirely. One
+  signature, two meanings, chosen by a flag the caller was thinking about for an
+  unrelated reason.
+  
+  The pointer now goes to the point on both paths, once per gesture. `wheelBurst`
+  still moves once rather than once per tick: a gesture is one movement, and an app
+  with a `mousemove` handler should not have to process one per notch — which for a
+  bench would be measuring the harness rather than the app.
+
 ## 0.6.0
 
 ### Minor Changes
