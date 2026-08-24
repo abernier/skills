@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "abernier",
   "description": "Antoine Bernier's Claude Code plugin.",
   "version": "0.4.2",
