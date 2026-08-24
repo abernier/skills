@@ -1,5 +1,103 @@
 # @abernier/skills
 
+## 0.5.0
+
+### Minor Changes
+
+- [#13](https://github.com/abernier/skills/pull/13) [`2c49b62`](https://github.com/abernier/skills/commit/2c49b62be2593955b678b8101f4deb268a478172) Thanks [@abernier](https://github.com/abernier)! - The bench harness reads its per-repo config from `bench.json` at the repository
+  root, not from `.claude/bench.json`.
+  
+  `.claude/` is Claude Code's own directory, and this file was never agent state:
+  it is committed repo config, read by six plain node/bash bins that run in CI
+  with no Claude in the loop. An un-namespaced filename sitting inside a
+  platform's directory reads as a native feature of that platform, which this is
+  not. The root of a repo names the thing rather than its provider — `tsconfig.json`,
+  `vite.config.ts` — so the file is plain `bench.json`, namespaced by neither the
+  plugin nor the vendor.
+  
+  Nothing else changes: the same keys, the same defaults, and a single-package
+  repo still needs no config file at all. `branchstat` now buckets a root
+  `bench.json` as config, which it did for the old path already.
+  
+  BREAKING: move `.claude/bench.json` to `bench.json` at your repository root.
+  There is no fallback to the old path — left where it is, the file is ignored and
+  every bench silently runs on the defaults.
+
+- [#19](https://github.com/abernier/skills/pull/19) [`54e7851`](https://github.com/abernier/skills/commit/54e78512e80e8fe52a3695c4788df6d9d3b34649) Thanks [@abernier](https://github.com/abernier)! - A tracerbench threshold that `bench.json` does not declare is no longer a 20%
+  gate. It is no gate at all.
+  
+  A gate width is a calibration of one repo on one machine — `sizematters` runs at
+  20/10, `tilt` had to override to 50/30 — so there is no number this harness can
+  pick that is right for a repo it has never measured. The old defaults were one
+  consumer's calibration reaching every other, and a third repo inherited a 20%
+  bar it never chose and could not see. It also contradicted the rule
+  `_bench-config.sh` states in its own header: an absent key adds nothing to a
+  mechanism rather than turning one on.
+  
+  So `thresholds.tracerbenchMs`, `thresholds.tracerbenchFrames`,
+  `thresholds.localTracerbenchMs` and `thresholds.localTracerbenchFrames` all
+  default to nothing. The bench still builds both sides, still measures, still
+  writes its comment with every number and delta — it exits 0 without judging, and
+  says so: `📊 **NO GATE** — … measured, not judged: no threshold is configured`,
+  never a green tick that reads as a bar cleared. `tracerbench.sh` passes
+  `--threshold` and `--frames-threshold` to the comparer only when the config named
+  a width, and prints what actually gates the run instead of an empty percentage.
+  
+  The cascade survives. `tracerbenchFrames` still borrows the ms width when it is
+  the only one declared, so one number gates both signals; declared alone it gates
+  frames alone, and the wall-clock total is reported as `ungated` rather than as
+  passing.
+  
+  `lgtm-perf.sh` also stops claiming its local widths are "half of the benches'
+  own". The profiler's `--component-threshold 20` is what both founding repos
+  calibrated to against a bench default of 30 — a third tighter, not half — and it
+  stays 20. Only the sentence was wrong.
+  
+  BREAKING: an absent threshold in `bench.json` no longer means a 20% gate, it
+  means no gate. Add `"thresholds": { "tracerbenchMs": 20 }` to keep the gate you
+  had. No migration.
+
+- [#15](https://github.com/abernier/skills/pull/15) [`31d2845`](https://github.com/abernier/skills/commit/31d2845de8554278133ce8f51334d4a891ed4ab2) Thanks [@abernier](https://github.com/abernier)! - `branchstat` reads its per-repo exclude list from `branchstat.json` at the
+  repository root, not from `.claude/branchstat.json`.
+  
+  `.claude/` is Claude Code's own directory, and the convention for plugin config
+  there — `.claude/<plugin>.local.md` — is per-user, gitignored state. This file is
+  the opposite: it is tracked, and it states repo-wide facts about what is not
+  product code, shared by everyone working on the repo. The root of a repo names
+  the thing rather than its provider — `tsconfig.json`, `vite.config.ts` — so the
+  file is plain `branchstat.json`, namespaced by neither the plugin nor the vendor.
+  
+  Nothing else changes: the same `exclude` key, the same defaults, and a repo that
+  needs no extra excludes still needs no config file at all. `branchstat` buckets a
+  root `branchstat.json` as config, which it did for the old path already.
+  
+  BREAKING: move `.claude/branchstat.json` to `branchstat.json` at your repository
+  root. There is no fallback to the old path — left where it is, the file is
+  ignored and the breakdown silently runs on the defaults.
+
+### Patch Changes
+
+- [#17](https://github.com/abernier/skills/pull/17) [`c4ba95e`](https://github.com/abernier/skills/commit/c4ba95e0db4fa82de2812135f9909308d2788f75) Thanks [@abernier](https://github.com/abernier)! - `branchstat.sh` drops every variable `git rev-parse --local-env-vars` names
+  before it resolves the repository, so an inherited `GIT_DIR` can no longer
+  redirect the report at another repo.
+  
+  Git reads `GIT_DIR` and friends out of the environment and lets them win over
+  `cwd` — and over `-C`, so no git call in the script could defend itself against
+  one. A git hook exports them, which is how a local `/branchstat` run inherits
+  one. With `GIT_DIR` set, `ROOT_DIR`, the base and the range were all read out of
+  the hook's repository rather than the one the caller stands in: wrong base
+  commit, wrong file count, wrong top module. Nothing failed while it happened —
+  a report on the wrong repository looks exactly like a report.
+  
+  It is the same bug class as `d8d9fda`, which scrubbed the bench harness and was
+  never carried across to `branchstat`. Every bench bin has carried the scrub
+  since; this was the last script in the harness without it. The reusable
+  `branchstat` CI workflow was never exposed — a GitHub Actions `run:` step sets
+  no `GIT_DIR` — so the only affected path is the local command.
+  
+  A regression test stands a fixture repo next to a second one with nothing in
+  common, points `GIT_DIR` at the second, and pins the report to the first.
+
 ## 0.4.2
 
 ### Patch Changes
