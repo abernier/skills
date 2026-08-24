@@ -297,7 +297,7 @@ const REPO_ROOT = (() => {
 })();
 
 /**
- * Per-repo values, from `.claude/bench.json` at the measured repo's root — the same
+ * Per-repo values, from `bench.json` at the measured repo's root — the same
  * file the bench shells read. Absent, or absent a key, means the defaults
  * below: one `src`, shadcn vendored under it. A file that exists but does not
  * parse is an error, not a default.
@@ -305,7 +305,7 @@ const REPO_ROOT = (() => {
 const benchConfig: { sourceRoots?: string[]; shadcnUiRoot?: string } = (() => {
   try {
     return JSON.parse(
-      fs.readFileSync(path.join(REPO_ROOT, ".claude", "bench.json"), "utf8"),
+      fs.readFileSync(path.join(REPO_ROOT, "bench.json"), "utf8"),
     );
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};

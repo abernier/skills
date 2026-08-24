@@ -114,7 +114,7 @@ const TESTS_RE = new RegExp(
 const CONFIG_RE = new RegExp(
   [
     String.raw`(\.config(\.[^/]+)?\.[cm]?[jt]sx?$)`, // *.config.ts, vite.config.mcp-app.ts
-    String.raw`((^|/)(tsconfig[^/]*|package|components|vercel)\.json$)`, // manifests
+    String.raw`((^|/)(tsconfig[^/]*|package|components|vercel|bench)\.json$)`, // manifests and root knobs
     String.raw`((^|/)\.[a-z-]+rc(\.[a-z]+)?$)`, // .prettierrc.json, .eslintrc.json
     String.raw`(^\.(github|husky|vscode)/)|(^\.claude/[^/]*\.json$)`, // CI, hooks wiring, editor
     String.raw`(\.(ya?ml|toml)$)`, // any YAML/TOML config

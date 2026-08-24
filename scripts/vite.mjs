@@ -17,7 +17,7 @@ const BENCH_TEST_FILE = fileURLToPath(
  *
  * Its last block is the one only a consumer can run: it derives its subject
  * from `sourceRoots` at run time, and goes red when the source tree moved and
- * `.claude/bench.json` did not.
+ * `bench.json` did not.
  *
  * As a **project**, not as an entry appended to `test.include`. Two reasons,
  * both of them failures seen before this existed:

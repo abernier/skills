@@ -36,7 +36,7 @@ set -euo pipefail
 # Two roots, never one. `SCRIPT_DIR` is where this harness lives — a directory
 # inside the consuming repo's `node_modules`, whose siblings this script sources
 # and runs. `ROOT_DIR` is the repository being measured: every git operation,
-# `.claude/bench.json`, the specs, `node_modules` and its `tsx` are all its.
+# `bench.json`, the specs, `node_modules` and its `tsx` are all its.
 # Confusing the two produces a plausible wrong number rather than an error.
 
 # The same scrub as `tracerbench.sh`, for the same reason: GIT_DIR and friends
@@ -99,8 +99,7 @@ INCLUDE_EXTERNAL=""
 # `release_bench_lock`, `kill_bench_ports`, `trap_teardown`.
 # shellcheck source=./_bench-common.sh
 source "$SCRIPT_DIR/_bench-common.sh"
-# `bench_config`, `bench_config_list` — the per-repo values, from
-# `.claude/bench.json`.
+# `bench_config`, `bench_config_list` — the per-repo values, from `bench.json`.
 # shellcheck source=./_bench-config.sh
 source "$SCRIPT_DIR/_bench-config.sh"
 
