@@ -28,7 +28,25 @@ import {
  */
 
 const COMPARE = path.resolve(__dirname, "profiler-compare.ts");
-const TSX = path.resolve(__dirname, "..", "node_modules", ".bin", "tsx");
+
+/**
+ * The repository this file is running inside.
+ *
+ * Not `__dirname/..`: that is the package directory, which is this repo when
+ * the plugin runs its own suite and `node_modules/@abernier/skills` when a
+ * consumer includes the file — and there, the package directory has no
+ * `node_modules/.bin/tsx` and no source tree, so every subprocess spawn came
+ * back empty and the block at the bottom skipped the very repo it exists to
+ * check. `git rev-parse --show-toplevel` lands on the repo either way, which is
+ * the same resolution the shell scripts use.
+ */
+const CONSUMER = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+  cwd: __dirname,
+  encoding: "utf8",
+}).trim();
+
+/** The `tsx` of the repo being measured — this package ships none. */
+const TSX = path.resolve(CONSUMER, "node_modules", ".bin", "tsx");
 
 // ---------------------------------------------------------------------------
 // Fixture repo
@@ -694,9 +712,9 @@ describe("profiler-compare verdict", () => {
  * The repo this suite runs in, which is where the script's own `REPO_ROOT`
  * lands too: the child gets `REAL_REPO` as its cwd and resolves the root from
  * there, with the same `git rev-parse --show-toplevel` it uses in a consuming
- * repo.
+ * repo — which is exactly how `CONSUMER` was resolved.
  */
-const REAL_REPO = path.resolve(__dirname, "..");
+const REAL_REPO = CONSUMER;
 
 /** This repo's own bench config, read exactly the way the script reads it. */
 const realRepoConfig: { sourceRoots?: string[]; shadcnUiRoot?: string } =
