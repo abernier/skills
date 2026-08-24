@@ -16,5 +16,8 @@ A consumer passes what only its repo knows: the dev-server `command`, and a
 pair, `use.trace`, `webServer.url` / `reuseExistingServer` and the profiler's
 `globalSetup: "@abernier/skills/profiler-scan"` all move behind it.
 
-`@playwright/test` becomes a peer dependency — the configs are loaded by the
-consumer's Playwright and must use its copy.
+BREAKING: `@playwright/test` is now a peer dependency, `>=1.49`. The configs are
+loaded by the consumer's Playwright and must use its copy, so a repo that has
+none — or an older one — installs or upgrades it. Nothing else about a
+hand-written config stops working; the builders are there to replace it, not to
+require replacing it.

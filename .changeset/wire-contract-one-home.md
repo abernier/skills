@@ -16,6 +16,7 @@ package instead of copying them:
 import type { CommitRecord, PerfIdStats } from "@abernier/skills/bench-types";
 ```
 
-`profiler.aggregate.ts` reads them from the same file, so a drift in the
-recorder's output has one declaration to break instead of three to fall out of
-sync.
+The recorder that produces them (`profiler.scan.injected.ts`), the aggregator
+that folds them and the comparer that diffs them all read the same file now, so
+a drift in the recorder's output has one declaration to break instead of five to
+fall out of sync.
