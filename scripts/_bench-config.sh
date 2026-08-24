@@ -38,10 +38,17 @@
 #   controlWorktreeCopy  extra repo-relative files the control worktree needs,
 #                        on top of the ones every repo copies
 #   thresholds.tracerbenchMs      wall-clock regression gate, percent
-#   thresholds.tracerbenchFrames  rendered-frames gate, percent
+#   thresholds.tracerbenchFrames  rendered-frames gate, percent — borrows the
+#                                 ms width when it is the only one declared
 #   thresholds.localTracerbenchMs      the same two, for `lgtm-perf.sh` — the
 #   thresholds.localTracerbenchFrames  local gate, deliberately tighter than
-#                                      the one CI runs
+#                                      the one CI runs; absent, the CI width
+#                                      stands
+#
+# The four thresholds have no default, which is the rule above applied to a
+# gate: a width is one repo's calibration on one machine, so an absent one adds
+# no gate rather than inventing one. The bench still measures and still writes
+# its comment; it exits 0 without judging.
 
 # One scalar value. `$2` is the default, used when the file or the key is
 # absent. A file that exists but does not parse is an error, not a default: a

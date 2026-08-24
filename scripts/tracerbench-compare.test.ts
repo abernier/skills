@@ -32,10 +32,15 @@ afterEach(() => {
 
 /**
  * Write one side's Playwright report, plus the `counters.json` the spec leaves
- * beside it. `bailed: undefined` writes no counters file at all — an older
- * control, or a run from before counters existed.
+ * beside it. `bailed` and `frames` both absent writes no counters file at all —
+ * an older control, or a run from before counters existed.
  */
-function writeSide(side: string, marks: Marks, bailed?: string[]) {
+function writeSide(
+  side: string,
+  marks: Marks,
+  bailed?: string[],
+  frames?: Record<string, number>,
+) {
   const sideDir = path.join(dir, side);
   fs.mkdirSync(sideDir, { recursive: true });
 
@@ -67,22 +72,47 @@ function writeSide(side: string, marks: Marks, bailed?: string[]) {
   const reportPath = path.join(sideDir, "report.json");
   fs.writeFileSync(reportPath, JSON.stringify(report));
 
-  if (bailed !== undefined) {
+  if (bailed !== undefined || frames !== undefined) {
     fs.writeFileSync(
       path.join(sideDir, "counters.json"),
-      JSON.stringify({ schemaVersion: 1, marks: {}, bailed }),
+      JSON.stringify({
+        schemaVersion: 1,
+        marks: Object.fromEntries(
+          Object.entries(frames ?? {}).map(([mark, count]) => [
+            mark,
+            { frames: count, drawCalls: 0 },
+          ]),
+        ),
+        bailed: bailed ?? [],
+      }),
     );
   }
   return reportPath;
 }
 
-function compare(control: string, experiment: string) {
-  return execFileSync(
-    TSX,
-    [COMPARE, control, experiment, "--md", path.join(dir, "comment.md")],
-    { encoding: "utf8" },
-  );
+/** Exit code and stdout — both are surfaces CI reads. */
+function run(control: string, experiment: string, ...flags: string[]) {
+  const argv = [
+    COMPARE,
+    control,
+    experiment,
+    "--md",
+    path.join(dir, "comment.md"),
+    ...flags,
+  ];
+  try {
+    return { status: 0, stdout: execFileSync(TSX, argv, { encoding: "utf8" }) };
+  } catch (err) {
+    const failure = err as { status?: number; stdout?: string };
+    return { status: failure.status ?? -1, stdout: failure.stdout ?? "" };
+  }
 }
+
+function compare(control: string, experiment: string, ...flags: string[]) {
+  return run(control, experiment, ...flags).stdout;
+}
+
+const commentMd = () => fs.readFileSync(path.join(dir, "comment.md"), "utf8");
 
 describe("bail detection", () => {
   it("believes the spec over the floor: an expensive mark that bailed is drift", () => {
@@ -143,5 +173,72 @@ describe("bail detection", () => {
     const out = compare(control, experiment);
 
     expect(out).toContain("1 bailed on one side");
+  });
+});
+
+describe("no threshold, no gate", () => {
+  it("measures a regression and reports it without judging it", () => {
+    // Doubled wall clock — a width of any plausible size would fail this.
+    const control = writeSide("control", { steady: 1000 });
+    const experiment = writeSide("experiment", { steady: 2000 });
+
+    const { status, stdout } = run(control, experiment);
+
+    expect(status).toBe(0);
+    expect(stdout).toContain("+100.0%");
+    expect(stdout).toContain("no threshold is configured");
+    expect(stdout).not.toContain("within");
+    expect(commentMd()).toContain("**NO GATE**");
+    expect(commentMd()).not.toContain("**PASS**");
+  });
+
+  it("still writes the numbers a reader came for", () => {
+    const control = writeSide("control", { steady: 1000, other: 500 });
+    const experiment = writeSide("experiment", { steady: 2000, other: 400 });
+
+    const { status } = run(control, experiment);
+    const md = commentMd();
+
+    expect(status).toBe(0);
+    expect(md).toContain("| **Total** | **1500ms** | **2400ms** | **+60.0%** |");
+    expect(md).toContain("xychart-beta");
+  });
+});
+
+describe("frames declared while ms is absent", () => {
+  const sides = (ctrlFrames: number, expFrames: number, expMs: number) => ({
+    control: writeSide("control", { steady: 1000 }, [], { steady: ctrlFrames }),
+    experiment: writeSide("experiment", { steady: expMs }, [], {
+      steady: expFrames,
+    }),
+  });
+
+  it("fails on frames alone", () => {
+    const { control, experiment } = sides(100, 200, 1000);
+
+    const { status, stdout } = run(
+      control,
+      experiment,
+      "--frames-threshold",
+      "10",
+    );
+
+    expect(status).toBe(1);
+    expect(stdout).toContain("frames +100.0% exceeds threshold of +10% frames");
+  });
+
+  it("lets wall clock through however far it moved", () => {
+    const { control, experiment } = sides(100, 100, 5000);
+
+    const { status, stdout } = run(
+      control,
+      experiment,
+      "--frames-threshold",
+      "10",
+    );
+
+    expect(status).toBe(0);
+    expect(stdout).toContain("frames 0.0% is within threshold of +10% frames");
+    expect(stdout).toContain("ms +400.0% ungated");
   });
 });

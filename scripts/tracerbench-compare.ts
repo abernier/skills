@@ -28,8 +28,14 @@
  * wall clock — so each gets its own.
  *
  * Which makes a width a property of the repo, not of this script: it is
- * recorded in `bench.json`, and the shell wrapper passes it in.  Reached
- * without the wrapper, this script gates at 20; and a repo whose spec writes no
+ * recorded in `bench.json`, and the shell wrapper passes it in.  There is no
+ * default, because there is no width that is right for a repo this script has
+ * never measured.  Given no `--threshold` and no `--frames-threshold`, the run
+ * still measures and still writes its table and its markdown — it just exits 0
+ * without judging.  A repo that wants a gate declares its width.
+ *
+ * `--frames-threshold` alone gates frames alone; `--threshold` alone gates both,
+ * frames borrowing the ms width.  And a repo whose spec writes no
  * `counters.json` gets the wall-clock comparison alone, with the frames and
  * draw-call columns dormant.
  */
@@ -92,8 +98,10 @@ const args = process.argv.slice(2);
 let controlPath: string | undefined,
   experimentPath: string | undefined,
   mdOutputPath: string | undefined;
-let threshold = 20; // the wrapper always passes its own — see the header
-let framesThreshold: number | undefined; // defaults to `threshold` when unset
+// Both undefined by default: an absent width is "do not gate", never a width of
+// someone else's choosing — see the header.
+let threshold: number | undefined;
+let framesThreshold: number | undefined; // borrows `threshold` when unset
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--md" && args[i + 1]) {
@@ -443,7 +451,8 @@ const totalExp = rows.reduce((s, r) => s + r.expMs, 0);
 const totalDelta = totalExp - totalCtrl;
 const totalPct = totalCtrl === 0 ? 0 : (totalDelta / totalCtrl) * 100;
 const totalIndicator = `${totalDelta > 0 ? "+" : ""}${totalPct.toFixed(1)}%`;
-const msExceeded = totalPct > threshold;
+const msGated = threshold !== undefined;
+const msExceeded = threshold !== undefined && totalPct > threshold;
 
 const totalCtrlFrames = countedRows.reduce(
   (s, r) => s + (r.ctrlCounters?.frames ?? 0),
@@ -457,8 +466,13 @@ const framesDelta = totalExpFrames - totalCtrlFrames;
 const framesPct =
   totalCtrlFrames === 0 ? 0 : (framesDelta / totalCtrlFrames) * 100;
 const framesIndicator = `${framesDelta > 0 ? "+" : ""}${framesPct.toFixed(1)}%`;
+// Frames borrows the ms width when it declares none of its own — so a repo that
+// names one number gates both signals with it. Neither declared, and there is
+// nothing to borrow: no frames gate either.
 const framesGate = framesThreshold ?? threshold;
-const framesExceeded = hasCounters && framesPct > framesGate;
+const framesGated = hasCounters && framesGate !== undefined;
+const framesExceeded =
+  hasCounters && framesGate !== undefined && framesPct > framesGate;
 
 const totalCtrlDraws = countedRows.reduce(
   (s, r) => s + (r.ctrlCounters?.drawCalls ?? 0),
@@ -470,24 +484,48 @@ const totalExpDraws = countedRows.reduce(
 );
 
 const exceeded = msExceeded || framesExceeded;
+/** Is any signal being judged at all? No width declared, nothing is. */
+const gated = msGated || framesGated;
 
 // The status line names the total that failed — "over threshold" alone leaves
 // the reader guessing which of the two signals moved. With only one signal
 // there is nothing to disambiguate, so the ms total reads as prose rather than
 // as a unit — lower-cased where the markdown puts it mid-sentence.
-const gates = hasCounters
-  ? `thresholds of +${threshold}% ms / +${framesGate}% frames`
-  : `threshold of +${threshold}%`;
+const gateWidths: string[] = [];
+if (msGated) {
+  gateWidths.push(hasCounters ? `+${threshold}% ms` : `+${threshold}%`);
+}
+if (framesGated) gateWidths.push(`+${framesGate}% frames`);
+const gates = `${gateWidths.length > 1 ? "thresholds" : "threshold"} of ${gateWidths.join(
+  " / ",
+)}`;
 
 const verdictFor = (msTotal: string) => {
+  const framesTotal = `frames ${framesIndicator}`;
+  const measured = hasCounters ? [msTotal, framesTotal] : [msTotal];
+
+  // No width declared anywhere: report the numbers and say plainly that nothing
+  // judged them. "within" would claim a bar was cleared when none was set.
+  if (!gated) {
+    return `${measured.join(", ")} — measured, not judged: no threshold is configured, so this run neither passes nor fails. Declare \`thresholds.tracerbenchMs\` in \`bench.json\` to gate it.`;
+  }
+
   const failing: string[] = [];
   if (msExceeded) failing.push(msTotal);
-  if (framesExceeded) failing.push(`frames ${framesIndicator}`);
-  const withinTotals = [msTotal];
-  if (hasCounters) withinTotals.push(`frames ${framesIndicator}`);
-  return exceeded
-    ? `${failing.join(" and ")} ${failing.length > 1 ? "exceed" : "exceeds"} ${gates}`
-    : `${withinTotals.join(", ")} ${hasCounters ? "within" : "is within"} ${gates}`;
+  if (framesExceeded) failing.push(framesTotal);
+  if (failing.length) {
+    return `${failing.join(" and ")} ${failing.length > 1 ? "exceed" : "exceeds"} ${gates}`;
+  }
+
+  // One signal can be gated while the other is not — frames declared, ms left
+  // open. Only the judged totals are "within"; the rest is measured and no more.
+  const judged: string[] = [];
+  if (msGated) judged.push(msTotal);
+  if (framesGated) judged.push(framesTotal);
+  const ungated = measured.filter((total) => !judged.includes(total));
+  const verb = judged.length > 1 ? "within" : "is within";
+  const within = `${judged.join(", ")} ${verb} ${gates}`;
+  return ungated.length ? `${within}; ${ungated.join(", ")} ungated` : within;
 };
 
 const verdict = verdictFor(
@@ -509,7 +547,9 @@ if (hasCounters) {
 console.log(...totalCells);
 console.log("");
 
-console.log(`${exceeded ? "❌" : "✅"} ${verdict}`);
+// Three states, not two: failed, passed, and never asked to pass — a green tick
+// on an ungated run would read as a bar cleared.
+console.log(`${exceeded ? "❌" : gated ? "✅" : "📊"} ${verdict}`);
 
 if (hasDrift) {
   console.log("");
@@ -544,7 +584,9 @@ if (mdOutputPath) {
   );
   const statusLine = exceeded
     ? `❌ **FAIL** — ${mdVerdict}`
-    : `✅ **PASS** — ${mdVerdict}`;
+    : gated
+      ? `✅ **PASS** — ${mdVerdict}`
+      : `📊 **NO GATE** — ${mdVerdict}`;
 
   const md = [
     "## 📊 TracerBench — mark duration comparison",
@@ -651,6 +693,8 @@ if (mdOutputPath) {
 }
 
 // ── Exit with error if threshold exceeded ───────────────────────
+// `exceeded` can only be true where a width was declared, so an ungated run
+// falls through to 0 however far the totals moved.
 if (exceeded) {
   process.exit(1);
 }

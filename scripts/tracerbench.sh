@@ -85,10 +85,16 @@ source "$SCRIPT_DIR/_bench-config.sh"
 
 # Gate widths are a calibration of this repo on this machine, so they live in
 # the config rather than here — see the header of `tracerbench-compare.ts` for
-# how to arrive at one. Frames borrows the ms width when the config is silent,
-# which is what the comparer does with an absent `--frames-threshold` anyway.
-THRESHOLD="$(bench_config thresholds.tracerbenchMs 20)"
-FRAMES_THRESHOLD="$(bench_config thresholds.tracerbenchFrames "$THRESHOLD")"
+# how to arrive at one. There is no default for the same reason: a width this
+# harness invented would be one repo's calibration imposed on every other, and a
+# repo that never declared one would go red with no way to see why.
+#
+# So an absent key means no gate. The bench still builds both sides, still
+# measures, still writes its comment — it just does not judge. Empty here, and
+# the flag is left off the comparer entirely below; frames borrows the ms width
+# there when only that one is declared.
+THRESHOLD="$(bench_config thresholds.tracerbenchMs "")"
+FRAMES_THRESHOLD="$(bench_config thresholds.tracerbenchFrames "")"
 # Where `pnpm run build` leaves the bundle. `dist` in a single-package repo, a
 # path inside the app package in a workspace.
 DIST_DIR="$(bench_config distDir dist)"
@@ -141,12 +147,25 @@ bench_teardown() {
 }
 trap_teardown bench_teardown
 
+# What the reader is told the run will be judged against, spelled out rather
+# than left to be inferred from two possibly-empty variables. Each branch says
+# what actually gates, including the one where nothing does.
+if [[ -n "$THRESHOLD" && -n "$FRAMES_THRESHOLD" ]]; then
+  GATES="+${THRESHOLD}% ms / +${FRAMES_THRESHOLD}% frames"
+elif [[ -n "$THRESHOLD" ]]; then
+  GATES="+${THRESHOLD}% ms / +${THRESHOLD}% frames (frames borrows the ms width)"
+elif [[ -n "$FRAMES_THRESHOLD" ]]; then
+  GATES="+${FRAMES_THRESHOLD}% frames; ms ungated"
+else
+  GATES="none — measure only; declare thresholds.tracerbenchMs in bench.json to gate"
+fi
+
 CURRENT_BRANCH="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD)"
 echo ""
 echo "📊 TracerBench — local run"
 echo "   experiment : $CURRENT_BRANCH (working tree)"
 echo "   control    : $CONTROL_BRANCH"
-echo "   thresholds : +${THRESHOLD}% ms / +${FRAMES_THRESHOLD}% frames"
+echo "   thresholds : $GATES"
 echo ""
 
 # ── Clean previous results ───────────────────────────────────────────────────
@@ -229,19 +248,34 @@ echo "⏳ Benchmarking control…"
 echo ""
 
 # ── 5. Compare ──────────────────────────────────────────────────────────────
+#
+# A flag is passed only when the config named a width. `--threshold ""` is not
+# "no gate" to the comparer — it is an unparseable width, and there is no
+# spelling of the flag that means "do not gate". Absence is that spelling.
+#
+# `REPRO` mirrors it: every width that gated this run is spelled out, so the
+# command a reviewer pastes reproduces the verdict the comment reports rather
+# than whatever the config says on the day they paste it.
+COMPARE_ARGS=(
+  "$RESULTS_DIR/control/report.json"
+  "$RESULTS_DIR/experiment/report.json"
+  --md "$RESULTS_DIR/comment.md"
+)
+REPRO="$SELF --control $CONTROL_BRANCH"
+if [[ -n "$THRESHOLD" ]]; then
+  COMPARE_ARGS+=(--threshold "$THRESHOLD")
+  REPRO+=" --threshold $THRESHOLD"
+fi
+if [[ -n "$FRAMES_THRESHOLD" ]]; then
+  COMPARE_ARGS+=(--frames-threshold "$FRAMES_THRESHOLD")
+  REPRO+=" --frames-threshold $FRAMES_THRESHOLD"
+fi
+
 echo "⏳ Comparing results…"
 "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/tracerbench-compare.ts" \
-  "$RESULTS_DIR/control/report.json" \
-  "$RESULTS_DIR/experiment/report.json" \
-  --md "$RESULTS_DIR/comment.md" \
-  --threshold "$THRESHOLD" \
-  --frames-threshold "$FRAMES_THRESHOLD"
+  "${COMPARE_ARGS[@]}"
 
-# Both flags are spelled out: the threshold decides the verdict the comment
-# reports, so a repro command that leaves it to the default stops reproducing it
-# the day the default moves.
-emit_comment_footer "$RESULTS_DIR/comment.md" "$ROOT_DIR" \
-  "$SELF --control $CONTROL_BRANCH --threshold $THRESHOLD --frames-threshold $FRAMES_THRESHOLD"
+emit_comment_footer "$RESULTS_DIR/comment.md" "$ROOT_DIR" "$REPRO"
 
 echo ""
 if [[ -f "$RESULTS_DIR/comment.md" ]]; then
