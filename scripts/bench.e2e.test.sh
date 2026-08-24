@@ -423,8 +423,9 @@ echo "tracerbench:"
 #
 #    The width is wide because the fixture is small: a ~200 ms total is mostly
 #    `page.goto` and click round-trips, whose spread on a busy machine is real.
-#    Calibrating a gate is the consumer's job; this one only has to be wider
-#    than the noise and far narrower than the regression case's ~10× knob.
+#    Measured spread across runs here is ±7%; the regression case's knob moves
+#    the total by ~+106%. Calibrating a gate is the consumer's job — this width
+#    only has to sit well clear of the first and well under the second.
 repo="$tmp/tb-same"
 make_repo "$repo"
 write_bench_json "$repo" 100
@@ -456,7 +457,7 @@ fi
 if comment_says "$repo/tracerbench-results" "PASS"; then
   fail "and it still emitted a PASS verdict" "$repo/tracerbench-results/comment.md"
 else
-  pass "and no verdict was emitted"
+  pass "and no PASS verdict was emitted"
 fi
 
 # 3. A real regression. Without this, case 1 would pass just as happily against
@@ -545,7 +546,9 @@ else
   fail "and the experiment-only summary was dropped"
 fi
 
-# 3. A real regression — thirty times the rows, thirty times the fiber renders.
+# 3. A real regression — sixty times the rows, sixty times the fiber renders.
+#    Deterministic, where the wall-clock half of this had to be calibrated: a
+#    render either happened or it did not.
 repo="$tmp/prof-regression"
 make_repo "$repo"
 set_rows "$repo" "$REGRESSED_ROWS"
