@@ -55,7 +55,7 @@ A [Claude Code plugin](https://code.claude.com/docs/en/plugins).
 
   jobs:
     branchstat:
-      uses: abernier/skills/.github/workflows/branchstat.yml@v0.2.0
+      uses: abernier/skills/.github/workflows/branchstat.yml@v0.7.0
       permissions:
         contents: read
         pull-requests: write
@@ -83,7 +83,7 @@ The pipeline ships here; the scenarios stay yours — `e2e/*.spec.ts`,
 that run them.
 
 ```
-pnpm add -D github:abernier/skills#v0.4.2
+pnpm add -D github:abernier/skills#v0.7.0
 ```
 
 ```json
@@ -279,7 +279,7 @@ concurrency:
 
 jobs:
   perf:
-    uses: abernier/skills/.github/workflows/perf.yml@v0.6.0
+    uses: abernier/skills/.github/workflows/perf.yml@v0.7.0
     permissions:
       contents: read
       pull-requests: write

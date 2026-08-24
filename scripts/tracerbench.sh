@@ -223,7 +223,19 @@ echo "✅ Control build ready"
 echo ""
 
 # ── 3. Benchmark experiment ──────────────────────────────────────────────────
+#
+# A leg is allowed to fail without stopping the run — the other side is still
+# worth measuring — but not to fail quietly. A leg that dies before it writes a
+# report is otherwise discovered further down as an ENOENT out of the comparer,
+# pages away from the output that explains it.
+#
+# The status itself does not gate: a spec can fail one assertion and still have
+# timed every mark, and voiding a real measurement over that would be a
+# different bug. What gates is the report — a missing one takes the comparer
+# down and, under `set -e`, this script with it, so a run that measured one side
+# can never read as a pass.
 echo "⏳ Benchmarking experiment…"
+EXPERIMENT_LEG=0
 (
   cd "$ROOT_DIR"
   TB_DIST="$DIST_NAME-experiment" \
@@ -232,11 +244,13 @@ echo "⏳ Benchmarking experiment…"
   TB_COUNTERS=tracerbench-results/experiment/counters.json \
   PLAYWRIGHT_JSON_OUTPUT_FILE=tracerbench-results/experiment/report.json \
   pnpm run test:tracerbench
-) || true
+) || EXPERIMENT_LEG=$?
+[[ $EXPERIMENT_LEG -eq 0 ]] || echo "❌ The experiment leg exited $EXPERIMENT_LEG — its output above says why."
 echo ""
 
 # ── 4. Benchmark control ────────────────────────────────────────────────────
 echo "⏳ Benchmarking control…"
+CONTROL_LEG=0
 (
   cd "$ROOT_DIR"
   TB_DIST="$DIST_NAME-control" \
@@ -245,7 +259,8 @@ echo "⏳ Benchmarking control…"
   TB_COUNTERS=tracerbench-results/control/counters.json \
   PLAYWRIGHT_JSON_OUTPUT_FILE=tracerbench-results/control/report.json \
   pnpm run test:tracerbench
-) || true
+) || CONTROL_LEG=$?
+[[ $CONTROL_LEG -eq 0 ]] || echo "❌ The control leg exited $CONTROL_LEG — its output above says why."
 echo ""
 
 # ── 5. Compare ──────────────────────────────────────────────────────────────
