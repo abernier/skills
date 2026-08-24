@@ -19,7 +19,21 @@ set -euo pipefail
 # and runs. `ROOT_DIR` is the repository being measured: every git operation,
 # `.claude/bench.json`, the builds, `node_modules` and its `tsx` are all its.
 # Confusing the two produces a plausible wrong number rather than an error.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Git reads GIT_DIR and friends out of the environment and lets them win over
+# `cwd` — and over `-C`, so `git -C "$ROOT_DIR"` is no defence either. A git
+# hook exports them, and then `--show-toplevel` answers with the cwd, the bench
+# lock lands in the hook's repository and `git worktree add` checks the control
+# branch out of it. Everything below must answer about the repo being measured,
+# so drop git's own list of repo-local variables once, here, for this script and
+# for every child it spawns.
+# shellcheck disable=SC2046  # intentional word-splitting of the var-name list
+unset $(git rev-parse --local-env-vars)
+
+# `BASH_SOURCE` through `realpath`: the `bin` entry installs this script as a
+# symlink in `node_modules/.bin`, and an unresolved `dirname` lands there —
+# where none of the siblings sourced below exist.
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 
 # The path a reader pastes to re-run this, resolved against the invocation cwd
