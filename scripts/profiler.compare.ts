@@ -47,14 +47,16 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { readBenchConfig } from "./bench.config.mjs";
 
+// The two shapes this program reads out of the report are declared where they
+// are produced, not a second time here: `PerfIdStats` in the wire contract the
+// spec writes against, `ComponentStats` in the aggregator that folds it.
+// `import type` and nothing else — neither specifier survives to run time.
+import type { PerfIdStats } from "./bench.types.d.mts";
+import type { ComponentStats } from "./profiler.aggregate.ts";
+
 // ---------------------------------------------------------------------------
 // Types — must match the report shape written by e2e/profiler.spec.ts
 // ---------------------------------------------------------------------------
-
-type IdStats = {
-  mount: { count: number; actualMs: number; baseMs: number };
-  update: { count: number; actualMs: number; baseMs: number };
-};
 
 type SourceLoc = {
   fileName: string;
@@ -62,27 +64,11 @@ type SourceLoc = {
   columnNumber?: number;
 };
 
-type ComponentStats = {
-  renders: number;
-  selfTimeMs: number;
-  baseTimeMs: number;
-  causes: {
-    mount: number;
-    props: number;
-    state: number;
-    context: number;
-    parent: number;
-    force: number;
-  };
-  changedProps: Record<string, number>;
-  changedContexts: Record<string, number>;
-};
-
 type StepStats = {
   step: string;
   durationMs: number;
   totalCommits: number;
-  byId: Record<string, IdStats>;
+  byId: Record<string, PerfIdStats>;
   scanCommits?: number;
   byComponent?: Record<string, ComponentStats>;
 };
@@ -430,7 +416,7 @@ function isCodebaseComponent(name: string): boolean {
 // Diff #1 — zone commit counts (existing signal)
 // ---------------------------------------------------------------------------
 
-function sumCommits(s: IdStats | undefined): number {
+function sumCommits(s: PerfIdStats | undefined): number {
   if (!s) return 0;
   return s.mount.count + s.update.count;
 }

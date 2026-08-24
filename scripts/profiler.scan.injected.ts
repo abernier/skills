@@ -34,28 +34,16 @@ import {
   type Fiber,
 } from "bippy";
 
-type RenderCause =
-  | { kind: "mount" }
-  | { kind: "props"; changed: string[] }
-  | { kind: "state" }
-  | { kind: "context"; names: string[] }
-  | { kind: "parent" }
-  | { kind: "force" };
-
-type RenderRecord = {
-  /** Component display name. Falls back to "Anonymous" for unnamed components. */
-  name: string;
-  /** Primary cause classification (mount > props > state > context > parent). */
-  cause: RenderCause;
-  /** `actualDuration` for this fiber (self time, no children). */
-  selfTime: number;
-  /** `baseDuration` (estimated time without memoization). */
-  baseTime: number;
-};
-
-type CommitRecord = {
-  renders: RenderRecord[];
-};
+// This file is the producer of these shapes; `bench.types.d.mts` is where they
+// are written down, and where `profiler.aggregate.ts` and every consuming repo's
+// spec read them. `import type` and nothing else: there is no runtime module
+// behind that file, and esbuild never sees this specifier because TypeScript
+// erases the import before the bundle is resolved.
+import type {
+  CommitRecord,
+  RenderCause,
+  RenderRecord,
+} from "./bench.types.d.mts";
 
 type ScanApi = {
   reset(): void;
