@@ -77,9 +77,9 @@ REGRESSED_ROWS=6000
 # ── The fixture app ──────────────────────────────────────────────────────────
 #
 # `fixtures/app/` — a real React app, on disk, in this repository. It runs
-# on its own (`pnpm -C fixtures/app dev`), which is the point of it
-# being a directory: when a bench misbehaves you can start the app it was
-# measuring and look at it.
+# on its own (`pnpm run fixture`, from this repo's root), which is the point
+# of it being a directory: when a bench misbehaves you can start the app it
+# was measuring and look at it.
 #
 # Only the *history* is synthesised here. Every case needs three git histories
 # of the same app, so this suite `git init`s a scratch repo and fabricates
@@ -139,7 +139,7 @@ copy_app() {
 
   # Set rather than inherited from the checkout: `CONTROL_ROWS` is what every
   # case below is calibrated against, and the committed value of `src/rows.ts`
-  # is only what a standalone `pnpm -C fixtures/app dev` renders.
+  # is only what a standalone `pnpm run fixture` renders.
   set_rows "$repo" "$CONTROL_ROWS"
 
   # Same lockfile on both sides, so a control worktree symlinks `node_modules`

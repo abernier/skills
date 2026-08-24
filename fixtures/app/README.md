@@ -8,13 +8,15 @@ Run it on its own, which is the point of it being a directory you can open: when
 a bench misbehaves, start the app it was measuring and look at it.
 
 ```sh
-pnpm -C fixtures/app dev
+pnpm run fixture        # from the repo root — vite, on this directory
 ```
 
-A package of this repo's pnpm workspace, so it has a `node_modules/.bin` of its
-own and that command is the whole of it. pnpm does not walk up to an ancestor
-`.bin`; without the workspace the only spelling that worked was a
-`vite fixtures/…` script at the repo root, in the manifest that gets published.
+From the repo root because this directory has no `node_modules` of its own: it
+borrows the repo's, and pnpm does not walk up to an ancestor `.bin`, so
+`pnpm -C fixtures/app dev` would not find a `vite`. Giving it one would mean
+making this repo a pnpm workspace, which cost a working release — changesets
+reads `pnpm-workspace.yaml#packages` to know what exists, and the root package
+is not a package of itself.
 
 `src/rows.ts` is the one knob — how many rows the list renders. The suite
 rewrites it per case to make the experiment side measurably more expensive than
@@ -28,9 +30,9 @@ scratch repo, copies this directory in, and fabricates commits on top. Only the
 *history* is synthesised; the source is what you see here.
 
 That scratch repo is where `@abernier/skills` resolves and where `node_modules`
-sits, so the two Playwright specs, their configs and the `test:tracerbench` /
-`test:profiler` scripts only run there. `dev`, `preview` and `build` run in both
-places.
+sits, so every script in this manifest runs there and only there — the two
+Playwright ones, and `dev`, `preview` and `build`, which need a `vite` on the
+`PATH` that only a scratch repo's `node_modules` provides.
 
 It is copied in two layouts, and it is the same files both times. Flat — every
 file at the scratch repo's root — is the single-package repo the benches'
