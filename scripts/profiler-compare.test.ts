@@ -30,6 +30,43 @@ import {
 const COMPARE = path.resolve(__dirname, "profiler-compare.ts");
 
 /**
+ * The environment with every repo-local git variable removed.
+ *
+ * Git reads GIT_DIR and friends out of the environment and lets them win over
+ * `cwd`, and a git hook exports them — so every git call in this file gets this
+ * environment, not the inherited one. Two things go wrong otherwise: a
+ * `git init` addresses the repository GIT_DIR names instead of the temp
+ * directory it was pointed at, and `rev-parse --show-toplevel` answers with the
+ * cwd instead of the repository. `git rev-parse --local-env-vars` is git's own
+ * list, so this stays right as git grows new ones.
+ *
+ * Built first, because the constants below already need it.
+ */
+const gitEnv = { ...process.env };
+for (const name of execFileSync("git", ["rev-parse", "--local-env-vars"], {
+  encoding: "utf8",
+})
+  .split("\n")
+  .filter(Boolean)) {
+  delete gitEnv[name];
+}
+
+/**
+ * The repository `dir` sits in.
+ *
+ * Scrubbed, so the answer is the repository and not `dir` itself: with GIT_DIR
+ * set, git already knows which repository it is in and `--show-toplevel`
+ * degenerates into reporting the cwd.
+ */
+function repoRootFrom(dir: string) {
+  return execFileSync("git", ["rev-parse", "--show-toplevel"], {
+    cwd: dir,
+    encoding: "utf8",
+    env: gitEnv,
+  }).trim();
+}
+
+/**
  * The repository this file is running inside.
  *
  * Not `__dirname/..`: that is the package directory, which is this repo when
@@ -38,12 +75,10 @@ const COMPARE = path.resolve(__dirname, "profiler-compare.ts");
  * `node_modules/.bin/tsx` and no source tree, so every subprocess spawn came
  * back empty and the block at the bottom skipped the very repo it exists to
  * check. `git rev-parse --show-toplevel` lands on the repo either way, which is
- * the same resolution the shell scripts use.
+ * the same resolution the shell scripts use — through `repoRootFrom`, so a hook
+ * that exported GIT_DIR cannot turn it back into `__dirname`.
  */
-const CONSUMER = execFileSync("git", ["rev-parse", "--show-toplevel"], {
-  cwd: __dirname,
-  encoding: "utf8",
-}).trim();
+const CONSUMER = repoRootFrom(__dirname);
 
 /** The `tsx` of the repo being measured — this package ships none. */
 const TSX = path.resolve(CONSUMER, "node_modules", ".bin", "tsx");
@@ -63,23 +98,6 @@ const TSX = path.resolve(CONSUMER, "node_modules", ".bin", "tsx");
 // the wiring is pinned to a layout nobody arranged for the occasion.
 
 let fixtureRepo: string;
-
-/**
- * The environment with every repo-local git variable removed.
- *
- * `git init` reads GIT_DIR and friends out of the environment, and this suite
- * runs from inside the repository it must never touch. Drop them, so the init
- * cannot be redirected anywhere. `git rev-parse --local-env-vars` is git's own
- * list, so this stays right as git grows new ones.
- */
-const gitEnv = { ...process.env };
-for (const name of execFileSync("git", ["rev-parse", "--local-env-vars"], {
-  encoding: "utf8",
-})
-  .split("\n")
-  .filter(Boolean)) {
-  delete gitEnv[name];
-}
 
 /** Lay a throwaway git repository down in `dir`. */
 function initFixtureRepo(dir: string) {
@@ -163,6 +181,69 @@ beforeAll(() => {
 
 afterAll(() => {
   fs.rmSync(plainRepo, { recursive: true, force: true });
+});
+
+describe("repo resolution", () => {
+  it("lands on the repository, not the cwd, when a hook has exported GIT_DIR", () => {
+    // `CONSUMER` is how a consuming repo gets its own tree measured, and it
+    // asks git rather than deriving it from `__dirname` — which under
+    // `node_modules` is the package, not the repo. But `--show-toplevel` only
+    // *discovers* a repository when git does not already know which one it is
+    // in: with GIT_DIR set it answers with the cwd instead. Hooks export
+    // GIT_DIR, so a consumer whose gate runs from `.husky/pre-commit` resolved
+    // `CONSUMER` to the package directory inside `node_modules/.pnpm/…`, found
+    // no `tsx` there, and skipped the block that exists to check its tree.
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "profiler-toplevel-"));
+    try {
+      const host = path.join(scratch, "host");
+      fs.mkdirSync(host);
+      const git = (...args: string[]) =>
+        execFileSync("git", ["-C", host, ...args], {
+          stdio: "ignore",
+          env: gitEnv,
+        });
+      git("init", "--quiet");
+      git(
+        "-c",
+        "user.name=fixture",
+        "-c",
+        "user.email=fixture@example.com",
+        "commit",
+        "--allow-empty",
+        "--quiet",
+        "-m",
+        "root",
+      );
+      // A worktree, so GIT_DIR below is shaped the way a hook running in one
+      // sets it — the shape that made this go wrong in the first place.
+      git("worktree", "add", "--quiet", path.join(scratch, "wt"), "-b", "wt");
+
+      // Where this file sits once a consumer installs the package.
+      const installed = path.join(
+        host,
+        "node_modules",
+        "@abernier",
+        "skills",
+        "scripts",
+      );
+      fs.mkdirSync(installed, { recursive: true });
+
+      const saved = process.env.GIT_DIR;
+      process.env.GIT_DIR = path.join(host, ".git", "worktrees", "wt");
+      let resolved: string;
+      try {
+        resolved = repoRootFrom(installed);
+      } finally {
+        if (saved === undefined) delete process.env.GIT_DIR;
+        else process.env.GIT_DIR = saved;
+      }
+
+      expect(resolved).toBe(fs.realpathSync(host));
+      expect(resolved).not.toBe(fs.realpathSync(installed));
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("fixture repo", () => {
