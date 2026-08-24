@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { SCAN_BUNDLE_PATH as ScanBundlePath } from "./profiler-scan.setup.mjs";
+import type { SCAN_BUNDLE_PATH as ScanBundlePath } from "./profiler.scan.setup.mjs";
 
 /**
  * The Playwright `globalSetup` this package ships, and the recorder it bundles.
@@ -28,7 +28,7 @@ const importSetup = async (bundle?: string): Promise<Setup> => {
   vi.resetModules();
   if (bundle === undefined) delete process.env.PROFILER_SCAN_BUNDLE;
   else process.env.PROFILER_SCAN_BUNDLE = bundle;
-  return (await import("./profiler-scan.setup.mjs")) as unknown as Setup;
+  return (await import("./profiler.scan.setup.mjs")) as unknown as Setup;
 };
 
 let tmp: string;

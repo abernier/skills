@@ -294,8 +294,8 @@ break.
 
 #### What the profiler spec writes
 
-The profiler runs in three moves — your spec records, `profiler-aggregate.ts`
-folds, `profiler-compare.ts` diffs — and the spec only owns the first. It writes
+The profiler runs in three moves — your spec records, `profiler.aggregate.ts`
+folds, `profiler.compare.ts` diffs — and the spec only owns the first. It writes
 its raw commit log, and nothing else, to `$PROFILER_COMMITS`:
 
 ```ts
@@ -364,7 +364,7 @@ A log it cannot fold — unparseable, no `steps`, a step with no `commits`, a
 render with a cause the recorder never produces — exits 2 and stops the bench.
 An empty aggregate would read as "no regressions".
 
-Do not `import` `profiler-aggregate.ts` from your spec. Node strips types in
+Do not `import` `profiler.aggregate.ts` from your spec. Node strips types in
 first-party files only, and this one lives under `node_modules`:
 `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`. It is a program, like the two
 comparers.
@@ -413,14 +413,14 @@ anything.
 | `controlWorktreeCopy` | none | extra repo-relative files the control worktree needs, on top of the specs and configs every repo copies — whatever else your spec imports. |
 | `thresholds.tracerbenchMs` | none — no wall-clock gate | wall-clock regression gate, percent. |
 | `thresholds.tracerbenchFrames` | the ms width, and no frames gate when that is unset too | rendered-frames gate, percent. |
-| `thresholds.localTracerbenchMs` | unset — `tracerbenchMs` stands, so no gate when that is unset too | the same gate for `lgtm-perf.sh`, where a quiet machine deserves a stricter bar than CI's. |
+| `thresholds.localTracerbenchMs` | unset — `tracerbenchMs` stands, so no gate when that is unset too | the same gate for `bench.lgtm.sh`, where a quiet machine deserves a stricter bar than CI's. |
 | `thresholds.localTracerbenchFrames` | unset — `tracerbenchFrames` stands | frames, for that local gate. |
 
 </details>
 
 #### Running the compare suite against your own tree
 
-`profiler-compare.test.ts` ships with the package, and its last block is the one
+`profiler.compare.test.ts` ships with the package, and its last block is the one
 only you can run: it derives its subject from your `sourceRoots` at run time,
 and goes red when the source tree moved and `bench.json` did not — the
 misconfiguration that otherwise leaves the gate measuring nothing. One plugin
@@ -429,7 +429,7 @@ collects it:
 ```ts
 // vitest.config.ts
 import { defineConfig } from "vitest/config";
-import { benchTests } from "@abernier/skills/vite";
+import { benchTests } from "@abernier/skills/bench-tests";
 
 export default defineConfig({ plugins: [benchTests()] });
 ```

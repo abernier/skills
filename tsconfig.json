@@ -12,7 +12,7 @@
     // refuses nothing it cannot erase. This is the flag that says so: an enum or
     // a parameter property here fails the typecheck instead of the run.
     "erasableSyntaxOnly": true,
-    // `profiler-aggregate.test.ts` imports its subject by a `.ts` specifier —
+    // `profiler.aggregate.test.ts` imports its subject by a `.ts` specifier —
     // the one spelling Node's type stripping, vitest and tsx all resolve.
     "allowImportingTsExtensions": true
   },

@@ -7,12 +7,12 @@ set -euo pipefail
 #
 #   - per-component fiber renders + cause classification (the gate), captured
 #     by a runtime-injected bippy recorder — this package's
-#     `profiler-scan.injected.ts`, bundled by its `profiler-scan.setup.mjs`
+#     `profiler.scan.injected.ts`, bundled by its `profiler.scan.setup.mjs`
 #   - coarse <React.Profiler> zone commit counts (advisory only)
 #
 # The spec writes one file per side: its raw commit log, at
-# `$PROFILER_COMMITS`. `profiler-aggregate.ts` folds that into the per-component
-# report, and `profiler-compare.ts` diffs the two reports. Both run through the
+# `$PROFILER_COMMITS`. `profiler.aggregate.ts` folds that into the per-component
+# report, and `profiler.compare.ts` diffs the two reports. Both run through the
 # measured repo's own `tsx`. Mirrors `scripts/tracerbench.sh` for dev/CI parity.
 #
 # Unlike TracerBench, this runs against `vite dev` (not a production build):
@@ -81,7 +81,7 @@ else
 fi
 
 # Every relative path below is repo-relative by construction, and
-# `profiler-compare.ts` resolves the repo it greps from its own cwd.
+# `profiler.compare.ts` resolves the repo it greps from its own cwd.
 cd "$ROOT_DIR"
 
 RESULTS_DIR="$ROOT_DIR/profiler-results"
@@ -98,11 +98,11 @@ INCLUDE_EXTERNAL=""
 
 # Shared helpers: `default_control`, `emit_comment_footer`, `acquire_bench_lock`,
 # `release_bench_lock`, `kill_bench_ports`, `trap_teardown`.
-# shellcheck source=./_bench-common.sh
-source "$SCRIPT_DIR/_bench-common.sh"
+# shellcheck source=./bench.common.sh
+source "$SCRIPT_DIR/bench.common.sh"
 # `bench_config`, `bench_config_list` — the per-repo values, from `bench.json`.
-# shellcheck source=./_bench-config.sh
-source "$SCRIPT_DIR/_bench-config.sh"
+# shellcheck source=./bench.config.sh
+source "$SCRIPT_DIR/bench.config.sh"
 
 CONTROL_BRANCH="$(default_control)"
 
@@ -128,7 +128,7 @@ done
 # Everything it leaves behind comes back down through the teardown below.
 #
 # After the parser on purpose: `bash scripts/profiler.sh -- --nope` must die in
-# the parser without ever taking the lock — `_bench-common.test.sh` runs exactly
+# the parser without ever taking the lock — `bench.common.test.sh` runs exactly
 # that, and a lock taken first would litter a lock directory on every test run
 # and could collide with a real bench.
 acquire_bench_lock "$ROOT_DIR" "profiler"
@@ -155,11 +155,11 @@ bench_teardown() {
 }
 trap_teardown bench_teardown
 
-# Fold one side's raw commit log into the report `profiler-compare.ts` reads.
+# Fold one side's raw commit log into the report `profiler.compare.ts` reads.
 # A side that produced no commit log ran a spec that failed or predates the
 # harness — the compare step below already has an answer for that, so skip it
 # and let it speak. A commit log that exists but cannot be folded is a broken
-# contract instead, and `profiler-aggregate.ts` exits non-zero, which stops the
+# contract instead, and `profiler.aggregate.ts` exits non-zero, which stops the
 # run: an empty aggregate would read as "no regressions".
 aggregate_side() {
   local side="$1"
@@ -169,7 +169,7 @@ aggregate_side() {
     return 0
   fi
   echo "⏳ Aggregating $side commit log…"
-  "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler-aggregate.ts" \
+  "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler.aggregate.ts" \
     "$commits" "$RESULTS_DIR/$side/report.json"
 }
 
@@ -195,14 +195,14 @@ mkdir -p "$RESULTS_DIR/control" "$RESULTS_DIR/experiment"
 # measured repo's (`$ROOT_DIR`). esbuild resolves imports by walking up from the
 # entry point, which under pnpm is a store directory whose siblings are this
 # package's own deps — `NODE_PATH` is the extra place it looks, and it is what
-# puts the measured repo's `bippy` in the bundle. `profiler-scan.setup.mjs`
+# puts the measured repo's `bippy` in the bundle. `profiler.scan.setup.mjs`
 # passes the same directory as `nodePaths` when it builds the bundle itself.
 SCAN_BUNDLE="$RESULTS_DIR/scan-bundle.js"
 echo "⏳ Building scan bundle…"
 (
   cd "$ROOT_DIR"
   NODE_PATH="$ROOT_DIR/node_modules" \
-  pnpm exec esbuild "$SCRIPT_DIR/profiler-scan.injected.ts" \
+  pnpm exec esbuild "$SCRIPT_DIR/profiler.scan.injected.ts" \
     --bundle --format=iife --target=es2020 --platform=browser \
     --keep-names --outfile="$SCAN_BUNDLE" --log-level=warning
 )
@@ -345,7 +345,7 @@ elif [[ ! -f "$CONTROL_REPORT" ]]; then
     --threshold "$THRESHOLD"
     --soft
   )
-  "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler-compare.ts" "${COMPARE_ARGS[@]}" || true
+  "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler.compare.ts" "${COMPARE_ARGS[@]}" || true
   if [[ -f "$RESULTS_DIR/_compare.md" ]]; then
     # `tail -n +2` drops profiler-compare's own `## Profiler …` title
     # since the banner already provides one — avoids the double-title bug.
@@ -376,7 +376,7 @@ else
   if [[ -n "$SOFT_FLAG" ]]; then
     COMPARE_ARGS+=("$SOFT_FLAG")
   fi
-  "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler-compare.ts" "${COMPARE_ARGS[@]}"
+  "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler.compare.ts" "${COMPARE_ARGS[@]}"
 fi
 
 # The repro command is rebuilt from the resolved flags rather than echoed from

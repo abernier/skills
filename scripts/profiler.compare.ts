@@ -23,7 +23,7 @@
  *    cumulative drift across many small components.
  *
  * Usage:
- *   tsx scripts/profiler-compare.ts <control.json> <experiment.json> \
+ *   tsx scripts/profiler.compare.ts <control.json> <experiment.json> \
  *     [--md <output.md>] [--threshold <percent>] [--min-commits <n>] \
  *     [--component-threshold <percent>] [--component-min-renders <n>] \
  *     [--include-external] [--soft]
@@ -229,13 +229,13 @@ for (let i = 0; i < args.length; i++) {
 /**
  * How to name this program in a message the reader will retype.
  *
- * The `.sh` wrapper behind the `profiler-compare` bin entry passes the name it was
- * invoked as. Absent it, a bench is running this file through the measured
- * repo's `tsx`, and that spelling is the only true one.
+ * The `.sh` wrapper behind the `profiler-compare` bin entry passes that bin
+ * name. Absent it, a bench is running this file through the measured repo's
+ * `tsx`, and that spelling is the only true one.
  */
 const INVOKED_AS =
   process.env.BENCH_INVOKED_AS ??
-  "tsx node_modules/@abernier/skills/scripts/profiler-compare.ts";
+  "tsx node_modules/@abernier/skills/scripts/profiler.compare.ts";
 
 if (!controlPath || !experimentPath) {
   console.error(
@@ -265,7 +265,7 @@ if (cv !== ev) {
 }
 if (ev > KNOWN_SCHEMA_VERSION) {
   console.error(
-    `Report schemaVersion ${ev} is newer than this script supports (${KNOWN_SCHEMA_VERSION}). Update @abernier/skills' profiler-compare.ts.`,
+    `Report schemaVersion ${ev} is newer than this script supports (${KNOWN_SCHEMA_VERSION}). Update @abernier/skills' profiler.compare.ts.`,
   );
   process.exit(2);
 }

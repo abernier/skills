@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
  * that turned out to be.
  */
 const BENCH_TEST_FILE = fileURLToPath(
-  new URL("./profiler-compare.test.ts", import.meta.url),
+  new URL("./profiler.compare.test.ts", import.meta.url),
 );
 
 /**

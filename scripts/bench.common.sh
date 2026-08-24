@@ -216,7 +216,7 @@ kill_bench_ports() {
 # pulled the server out from under a Playwright that was still running.
 #
 # So on a signal: disarm the traps, tear down once, and re-raise, which makes
-# bash die *of* the signal. Every parent up the chain — `lgtm-perf.sh`, pnpm,
+# bash die *of* the signal. Every parent up the chain — `bench.lgtm.sh`, pnpm,
 # the shell — then sees an interrupt rather than a clean exit, and stops too.
 # shellcheck disable=SC2064  # `$fn` must expand now — the handler is a string
 trap_teardown() {

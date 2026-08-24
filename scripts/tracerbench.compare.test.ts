@@ -12,11 +12,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  * bails it saw in `counters.json`; before that was read, the comparer inferred
  * them from a 50 ms floor — a guess that is wrong in both directions.
  *
- * Driven as a subprocess, like `profiler-compare.test.ts`: the script is a CLI
+ * Driven as a subprocess, like `profiler.compare.test.ts`: the script is a CLI
  * with top-level side effects, and its stdout is the surface CI reads.
  */
 
-const COMPARE = path.resolve(__dirname, "tracerbench-compare.ts");
+const COMPARE = path.resolve(__dirname, "tracerbench.compare.ts");
 const TSX = path.resolve(__dirname, "..", "node_modules", ".bin", "tsx");
 
 type Marks = Record<string, number>;

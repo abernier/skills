@@ -13,13 +13,13 @@ import {
 } from "vitest";
 
 /**
- * End-to-end tests for `scripts/profiler-compare.ts`.
+ * End-to-end tests for `scripts/profiler.compare.ts`.
  *
  * The compare script is structured as a CLI with top-level side effects
  * (arg parsing, file reads, console output, exit codes). Rather than
  * refactoring it into a library to test individual helpers, we drive it
  * as a subprocess: each test materialises minimal control + experiment
- * report JSONs, runs `tsx scripts/profiler-compare.ts <ctrl> <exp> ...`,
+ * report JSONs, runs `tsx scripts/profiler.compare.ts <ctrl> <exp> ...`,
  * and asserts on the resulting markdown / exit code.
  *
  * Subprocess startup (~500 ms each) keeps the suite slow-ish but the
@@ -27,7 +27,7 @@ import {
  * normalisation, schema gate, etc. all behave exactly as in CI.
  */
 
-const COMPARE = path.resolve(__dirname, "profiler-compare.ts");
+const COMPARE = path.resolve(__dirname, "profiler.compare.ts");
 
 /**
  * The environment with every repo-local git variable removed.

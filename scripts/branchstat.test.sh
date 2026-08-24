@@ -3,7 +3,7 @@
 #
 # It drives the shell entry point, so it covers both halves: the git and cloc
 # plumbing here, and the bucketing, rollup and rendering in
-# branchstat-report.mts that it pipes into. That is why it stayed the net when
+# branchstat.report.mts that it pipes into. That is why it stayed the net when
 # those moved out of a jq program and into TypeScript, and again when the pair
 # moved out of one repo and into this plugin — every assertion below held across
 # both ports, unchanged.

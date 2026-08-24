@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ──────────────────────────────────────────────────────────────────────────────
-# `profiler-aggregate.ts` as a command — the `profiler-aggregate` bin entry.
+# `tracerbench.compare.ts` as a command — the `tracerbench-compare` bin entry.
 #
 # The bin cannot point at the `.ts` file: it needs a TypeScript loader, and the
 # one this harness uses is deliberately the measured repo's own `tsx`. A
@@ -28,11 +28,10 @@ ROOT_DIR="$(git rev-parse --show-toplevel)"
 
 # The name to print in the program's own usage message — the one the reader
 # just typed, rather than the `tsx <path>` spelling it would otherwise guess at.
-# `$0` is not that name under every package manager: npm symlinks the bin, pnpm
-# execs the real file through a shim, so the two spellings are folded into one
-# by dropping the `.sh`. A bench running the `.ts` directly sets nothing, and
-# the program keeps its `tsx` form.
-invoked_as="$(basename "$0")"
-export BENCH_INVOKED_AS="${invoked_as%.sh}"
+# Written down rather than derived from `$0`: the file is named for its place in
+# the tree, the bin is named for the command line, and only the second is
+# retypeable. A bench running the `.ts` directly sets nothing, and the program
+# keeps its `tsx` form.
+export BENCH_INVOKED_AS="tracerbench-compare"
 
-exec "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler-aggregate.ts" "$@"
+exec "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/tracerbench.compare.ts" "$@"

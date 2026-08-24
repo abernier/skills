@@ -4,7 +4,7 @@
 #
 # The benches are the same everywhere this harness runs; the paths and gate
 # widths they work with are not. Those are values, not forks in the code, so
-# `tracerbench.sh`, `profiler.sh` and `profiler-compare.ts` stay identical
+# `tracerbench.sh`, `profiler.sh` and `profiler.compare.ts` stay identical
 # across repos and only the JSON differs.
 #
 # At the root, not under `.claude/`: this is committed repo config, read by six
@@ -40,7 +40,7 @@
 #   thresholds.tracerbenchMs      wall-clock regression gate, percent
 #   thresholds.tracerbenchFrames  rendered-frames gate, percent — borrows the
 #                                 ms width when it is the only one declared
-#   thresholds.localTracerbenchMs      the same two, for `lgtm-perf.sh` — the
+#   thresholds.localTracerbenchMs      the same two, for `bench.lgtm.sh` — the
 #   thresholds.localTracerbenchFrames  local gate, deliberately tighter than
 #                                      the one CI runs; absent, the CI width
 #                                      stands

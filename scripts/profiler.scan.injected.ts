@@ -5,7 +5,7 @@
  * and *why* — the same data the React DevTools "Why did this render?" panel shows.
  *
  * This file is **never** imported by the app or by the spec directly. It is
- * built into `profiler-results/scan-bundle.js` by `profiler-scan.setup.mjs`
+ * built into `profiler-results/scan-bundle.js` by `profiler.scan.setup.mjs`
  * beside it, and shipped to the page as raw script content. That keeps the
  * dependency on `bippy` and any version drift contained to test infrastructure
  * — both the control and the experiment branches receive byte-identical

@@ -30,14 +30,14 @@ import { fileURLToPath } from "node:url";
  * Shipped as `.mjs` on purpose. Node strips types in first-party files only, so
  * a `.ts` file under `node_modules` throws `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`
  * the moment Playwright loads it, and Playwright does not transform
- * `node_modules` either. The types live next door in `profiler-scan.setup.d.mts`.
- * `profiler-scan.injected.ts` beside it stays TypeScript: nothing imports it,
+ * `node_modules` either. The types live next door in `profiler.scan.setup.d.mts`.
+ * `profiler.scan.injected.ts` beside it stays TypeScript: nothing imports it,
  * esbuild only ever reads it as an entry point and does its own transpilation.
  */
 
 /** The recorder source, resolved from this file wherever the package landed. */
 const SOURCE_PATH = fileURLToPath(
-  new URL("./profiler-scan.injected.ts", import.meta.url),
+  new URL("./profiler.scan.injected.ts", import.meta.url),
 );
 
 /**

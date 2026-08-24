@@ -77,14 +77,14 @@ EXPERIMENT_PORT=4201
 
 # Shared helpers: `default_control`, `emit_comment_footer`, `acquire_bench_lock`,
 # `release_bench_lock`, `kill_bench_ports`, `trap_teardown`.
-# shellcheck source=./_bench-common.sh
-source "$SCRIPT_DIR/_bench-common.sh"
+# shellcheck source=./bench.common.sh
+source "$SCRIPT_DIR/bench.common.sh"
 # `bench_config`, `bench_config_list` — the per-repo values, from `bench.json`.
-# shellcheck source=./_bench-config.sh
-source "$SCRIPT_DIR/_bench-config.sh"
+# shellcheck source=./bench.config.sh
+source "$SCRIPT_DIR/bench.config.sh"
 
 # Gate widths are a calibration of this repo on this machine, so they live in
-# the config rather than here — see the header of `tracerbench-compare.ts` for
+# the config rather than here — see the header of `tracerbench.compare.ts` for
 # how to arrive at one. There is no default for the same reason: a width this
 # harness invented would be one repo's calibration imposed on every other, and a
 # repo that never declared one would go red with no way to see why.
@@ -123,7 +123,7 @@ done
 # leave behind comes back down through the one teardown installed just below.
 #
 # After the parser on purpose: `bash scripts/tracerbench.sh -- --nope` must die
-# in the parser without ever taking the lock — `_bench-common.test.sh` runs
+# in the parser without ever taking the lock — `bench.common.test.sh` runs
 # exactly that, and a lock taken first would litter a lock directory on every
 # test run and could collide with a real bench.
 acquire_bench_lock "$ROOT_DIR" "tracerbench"
@@ -272,7 +272,7 @@ if [[ -n "$FRAMES_THRESHOLD" ]]; then
 fi
 
 echo "⏳ Comparing results…"
-"$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/tracerbench-compare.ts" \
+"$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/tracerbench.compare.ts" \
   "${COMPARE_ARGS[@]}"
 
 emit_comment_footer "$RESULTS_DIR/comment.md" "$ROOT_DIR" "$REPRO"

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ──────────────────────────────────────────────────────────────────────────────
-# `tracerbench-compare.ts` as a command — the `tracerbench-compare` bin entry.
+# `profiler.compare.ts` as a command — the `profiler-compare` bin entry.
 #
 # The bin cannot point at the `.ts` file: it needs a TypeScript loader, and the
 # one this harness uses is deliberately the measured repo's own `tsx`. A
@@ -16,7 +16,8 @@ set -euo pipefail
 
 # The same scrub as `tracerbench.sh`, for the same reason: GIT_DIR and friends
 # win over `cwd`, so under a git hook the `--show-toplevel` below would report
-# the cwd rather than the repo whose `tsx` this runs.
+# the cwd rather than the repo whose `tsx` this runs. It also reaches the
+# comparer, which resolves the tree it greps from its own cwd the same way.
 # shellcheck disable=SC2046  # intentional word-splitting of the var-name list
 unset $(git rev-parse --local-env-vars)
 
@@ -28,11 +29,10 @@ ROOT_DIR="$(git rev-parse --show-toplevel)"
 
 # The name to print in the program's own usage message — the one the reader
 # just typed, rather than the `tsx <path>` spelling it would otherwise guess at.
-# `$0` is not that name under every package manager: npm symlinks the bin, pnpm
-# execs the real file through a shim, so the two spellings are folded into one
-# by dropping the `.sh`. A bench running the `.ts` directly sets nothing, and
-# the program keeps its `tsx` form.
-invoked_as="$(basename "$0")"
-export BENCH_INVOKED_AS="${invoked_as%.sh}"
+# Written down rather than derived from `$0`: the file is named for its place in
+# the tree, the bin is named for the command line, and only the second is
+# retypeable. A bench running the `.ts` directly sets nothing, and the program
+# keeps its `tsx` form.
+export BENCH_INVOKED_AS="profiler-compare"
 
-exec "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/tracerbench-compare.ts" "$@"
+exec "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler.compare.ts" "$@"

@@ -65,7 +65,7 @@ set -euo pipefail
 unset $(git rev-parse --local-env-vars)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPORT_TS="$SCRIPT_DIR/branchstat-report.mts"
+REPORT_TS="$SCRIPT_DIR/branchstat.report.mts"
 
 # Bucketing, the module rollup and both renderings live in the TypeScript half;
 # this file stays the one that talks to git and cloc.

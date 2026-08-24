@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * Fold a profiler run's raw commit log into the per-component report
- * `profiler-compare.ts` diffs.
+ * `profiler.compare.ts` diffs.
  *
  * Two faces, one file:
  *
@@ -14,10 +14,10 @@
  * `node_modules`. A spec that imported this file died at run time with
  * "Stripping types is currently unsupported for files under node_modules".
  * Launched as a program through `tsx`, it strips anywhere — the same way
- * `profiler-compare.ts` and `tracerbench-compare.ts` are run.
+ * `profiler.compare.ts` and `tracerbench.compare.ts` are run.
  *
  * Usage:
- *   tsx node_modules/@abernier/skills/scripts/profiler-aggregate.ts \
+ *   tsx node_modules/@abernier/skills/scripts/profiler.aggregate.ts \
  *     <commits.json> <report.json>
  *
  * See the CLI banner below for the exact shape the spec has to write.
@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url";
 
 /**
  * Cause classification produced by the bippy recorder. Mirrors the union in
- * `e2e/profiler-scan.injected.ts` exactly — this file is the canonical
+ * `e2e/profiler.scan.injected.ts` exactly — this file is the canonical
  * declaration both the spec and the recorder validate against.
  */
 export type RenderCause =
@@ -55,7 +55,7 @@ export type CommitRecord = {
 /**
  * Per-component aggregate folded from a step's raw commit log. Compact
  * enough to round-trip through JSON without bloating the report; rich
- * enough to drive the cause-aware diffs in `profiler-compare.ts`.
+ * enough to drive the cause-aware diffs in `profiler.compare.ts`.
  */
 export type ComponentStats = {
   /** Total renders across all commits in this step. */
@@ -81,7 +81,7 @@ export type ComponentStats = {
 /**
  * Fold a step's commit log into per-component aggregates.
  *
- * Keeps the report compact (`profiler-compare.ts` doesn't need every
+ * Keeps the report compact (`profiler.compare.ts` doesn't need every
  * individual render) while preserving enough detail to surface
  * "ZoomPan rendered 50 times in this step, 80% because xywh changed".
  *
@@ -143,7 +143,7 @@ function emptyStats(): ComponentStats {
 //
 // The spec writes ONE file, its raw commit log, to the absolute path in
 // `$PROFILER_COMMITS` (default `profiler-results/commits.json`). It is the
-// report envelope `profiler-compare.ts` already reads, except every step
+// report envelope `profiler.compare.ts` already reads, except every step
 // carries the recorder's raw `commits` instead of a folded `byComponent`:
 //
 //   {
@@ -260,13 +260,13 @@ function checkCommits(value: unknown, where: string): asserts value is CommitRec
 /**
  * How to name this program in a message the reader will retype.
  *
- * The `.sh` wrapper behind the `profiler-aggregate` bin entry passes the name
- * it was invoked as. Absent it, `profiler.sh` is folding a side through the
- * measured repo's `tsx`, and that spelling is the only true one.
+ * The `.sh` wrapper behind the `profiler-aggregate` bin entry passes that bin
+ * name. Absent it, `profiler.sh` is folding a side through the measured repo's
+ * `tsx`, and that spelling is the only true one.
  */
 const INVOKED_AS =
   process.env.BENCH_INVOKED_AS ??
-  "tsx node_modules/@abernier/skills/scripts/profiler-aggregate.ts";
+  "tsx node_modules/@abernier/skills/scripts/profiler.aggregate.ts";
 
 function main(argv: string[]): void {
   let inputPath: string | undefined;
@@ -339,7 +339,7 @@ function main(argv: string[]): void {
 
 /**
  * Whether this file is the program being run, rather than a module something
- * imported — `profiler-aggregate.test.ts` imports `aggregateCommits` from it,
+ * imported — `profiler.aggregate.test.ts` imports `aggregateCommits` from it,
  * and an import must fold nothing.
  *
  * Through `realpath` on both sides: installed by pnpm, the path a caller types

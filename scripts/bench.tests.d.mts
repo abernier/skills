@@ -6,7 +6,7 @@ import type { Plugin } from "vitest/config";
  * ```ts
  * // vitest.config.ts
  * import { defineConfig } from "vitest/config";
- * import { benchTests } from "@abernier/skills/vite";
+ * import { benchTests } from "@abernier/skills/bench-tests";
  *
  * export default defineConfig({ plugins: [benchTests()] });
  * ```

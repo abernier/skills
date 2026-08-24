@@ -27,8 +27,8 @@ cd "$ROOT_DIR" || exit 1
 
 # `bench_config` — the per-repo values, from `bench.json`. Reads `$ROOT_DIR`,
 # so it is sourced after it is set.
-# shellcheck source=./_bench-config.sh
-source "$SCRIPT_DIR/_bench-config.sh"
+# shellcheck source=./bench.config.sh
+source "$SCRIPT_DIR/bench.config.sh"
 
 # A quiet machine deserves a stricter bar than CI's, so the local run gets its
 # own pair of widths — `thresholds.localTracerbench*` — rather than the
