@@ -30,6 +30,11 @@
     inferred pages later from a missing file. Both benches; `tracerbench.sh`
     never had the false green (a missing report takes its comparer down, and
     `set -e` with it) but reported the failure just as late.
+    
+    **Correction.** That parenthesis was wrong, and so was the claim it
+    supported. The report is not missing: Playwright's JSON reporter writes one
+    even when its `webServer` never starts. `tracerbench.sh` had the same false
+    green, from the same release, and it is fixed in 0.9.0.
   - Under `--strict`, a regression no longer kills `profiler.sh` before the
     footer naming the commit the numbers belong to.
 

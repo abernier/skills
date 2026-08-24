@@ -416,6 +416,17 @@ if comment_says "$repo/tracerbench-results" "**PASS**"; then
 else
   fail "and the comment does not say PASS" "$repo/tracerbench-results/comment.md"
 fi
+# And a PASS over something. Every negative case below asserts that a run which
+# compared nothing goes red; without this one, a harness that measured nothing
+# anywhere would satisfy all of them. A real two-sided run has both marks in
+# its table and a total that is not two zeroes.
+if comment_says "$repo/tracerbench-results" "> mount |" \
+  && comment_says "$repo/tracerbench-results" "> tick |" \
+  && ! comment_says "$repo/tracerbench-results" "| **0ms** | **0ms** |"; then
+  pass "and it compared real marks on both sides"
+else
+  fail "and it did not compare real marks" "$repo/tracerbench-results/comment.md"
+fi
 
 # 2. A control that cannot run. For TracerBench that is the control build: the
 #    spec and the preview server are the experiment's, and the only thing the
@@ -506,6 +517,105 @@ else
   fail "and the comment does not say PASS" "$repo/tracerbench-results/comment.md"
 fi
 
+# 6. A control leg that starts and measures nothing.
+#
+#    Case 2 kills the control side at *build* time, which stops the run under
+#    `set -e` before anything is compared. This is the other half, and the half
+#    seen in production: the leg starts, its web server dies, and Playwright's
+#    JSON reporter still writes a report — `suites: []`, one error. So the
+#    comparer read a perfectly valid file, found no mark in common with the
+#    experiment, summed an empty set to `0ms` against `0ms`, called that within
+#    threshold and exited 0. `lgtm-perf` printed `tracerbench : ✅ pass`.
+#
+#    Both legs run the same repo and the same `pnpm run preview`; the only thing
+#    that differs between them is the `--outDir` the bench hands each. So a
+#    preview wrapper that reads its own arguments fails exactly one side, and
+#    fails it the way a taken port does — at the web server, after the leg has
+#    started.
+repo="$tmp/tb-control-cannot-serve"
+make_repo "$repo"
+write_bench_json "$repo" 100
+cat > "$repo/preview.sh" <<'SH'
+#!/usr/bin/env sh
+for arg in "$@"; do
+  case "$arg" in
+    *-control) echo "refusing to serve the control bundle" >&2; exit 1 ;;
+  esac
+done
+exec ./node_modules/.bin/vite preview "$@"
+SH
+node -e '
+  const fs = require("node:fs");
+  const manifest = process.argv[1] + "/package.json";
+  const m = JSON.parse(fs.readFileSync(manifest, "utf8"));
+  m.scripts.preview = "sh ./preview.sh";
+  fs.writeFileSync(manifest, JSON.stringify(m, null, 2) + "\n");
+' "$repo"
+run_bench "$repo" tracerbench --control control-ok
+if [[ $status -ne 0 ]]; then
+  pass "a control leg that measured nothing exits non-zero"
+else
+  fail "a control leg that measured nothing exited 0" "$log"
+fi
+if comment_says "$repo/tracerbench-results" "**NO DATA**"; then
+  pass "and the comment says NO DATA"
+else
+  fail "and the comment does not say NO DATA" "$repo/tracerbench-results/comment.md"
+fi
+if comment_says "$repo/tracerbench-results" "**PASS**"; then
+  fail "and it still emitted a PASS verdict" "$repo/tracerbench-results/comment.md"
+else
+  pass "and no PASS verdict was emitted"
+fi
+
+# 7. Something else already on the control leg's port — the collision that
+#    produced case 6 in the wild, one run in two on `tilt`. `vite preview` binds
+#    `--strictPort`, and while the ports only came down in the exit trap, after
+#    the comparison, a leg could meet a port a previous run still held.
+#
+#    Nothing about the branch is wrong here, so the run has to pass: the bench
+#    frees the port it is about to bind, immediately before it binds it.
+repo="$tmp/tb-port-taken"
+make_repo "$repo"
+write_bench_json "$repo" 100
+# 4200 is `CONTROL_PORT` in `tracerbench.sh`, spelled out because that is the
+# whole of what this case is about.
+#
+# An HTTP server on `127.0.0.1`, and both halves of that are load-bearing. The
+# error the bug was found on — `http://localhost:4200 is already used, make sure
+# that nothing is running on the port/url` — is Playwright's own check, and it
+# only fires against something that *answers* on that URL. A bare TCP listener
+# is worse than useless here: Playwright's probe hangs on it instead, and the
+# leg stalls for as long as the squatter lives rather than failing on the port.
+# Binding `::` is the same trap by another route — `localhost` resolves to `::1`
+# first, so the squatter shadows a vite that bound `127.0.0.1` rather than
+# colliding with it. Same address and same protocol as the server it stands in
+# for, or this case measures a timeout.
+#
+# The timeout bounds the squatter's life either way, so an aborted run cannot
+# leave a listener behind. The bench reaps it long before that.
+node -e 'require("node:http").createServer((_, res) => res.end("squatter")).listen(4200, "127.0.0.1"); setTimeout(() => process.exit(0), 120000)' &
+squatter=$!
+run_bench "$repo" tracerbench --control control-ok
+kill "$squatter" 2>/dev/null
+if [[ $status -eq 0 ]]; then
+  pass "a squatter on the control port does not take the run down"
+else
+  fail "a squatter on the control port exited $status" "$log"
+fi
+if comment_says "$repo/tracerbench-results" "**PASS**" \
+  && ! comment_says "$repo/tracerbench-results" "**NO DATA**"; then
+  pass "and the control leg measured, rather than being written off"
+else
+  fail "and the control leg did not measure" "$repo/tracerbench-results/comment.md"
+fi
+# And freed it *before* the control leg, not in the teardown after everything.
+if sed -n '1,/Benchmarking control/p' "$log" | grep -qF "Freeing port 4200"; then
+  pass "and the port was freed before the leg that binds it"
+else
+  fail "and the port was freed too late to help" "$log"
+fi
+
 echo ""
 echo "profiler:"
 
@@ -553,6 +663,13 @@ if comment_says "$repo/profiler-results" "mount"; then
   pass "and the experiment-only summary is still emitted"
 else
   fail "and the experiment-only summary was dropped"
+fi
+# The TL;DR is the line a reviewer skims, and it used to read
+# `Verdict: ✅ PASS` directly under the "nothing was compared" banner.
+if comment_says "$repo/profiler-results" "✅ PASS"; then
+  fail "and its TL;DR still calls the run a pass" "$repo/profiler-results/comment.md"
+else
+  pass "and its TL;DR does not call the run a pass"
 fi
 
 # 3. A real regression — sixty times the rows, sixty times the fiber renders.

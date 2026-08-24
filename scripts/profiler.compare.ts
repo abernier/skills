@@ -729,9 +729,20 @@ if (mdOutputPath) {
   // Only component blockers fail the PR. Zone regressions are reported as a
   // suffix on the verdict line ("(advisory)") so the reviewer knows the zone
   // signal moved without confusing it with a hard gate.
+  //
+  // Unless the two sides are the same file. `profiler.sh` runs exactly that
+  // when the control leg produced no report — diffing this PR's measurements
+  // against themselves is the only way to print them at all — and it banners
+  // the comment, says so on the console and exits non-zero. The TL;DR still
+  // read `Verdict: ✅ PASS` directly under that banner, and the TL;DR is the
+  // line a reviewer actually skims. Nothing was gated wrongly; the comment
+  // simply contradicted the exit code.
+  const selfDiff = path.resolve(controlPath) === path.resolve(experimentPath);
   const failedMd = compBlockers > 0;
   let verdictBullet: string;
-  if (failedMd) {
+  if (selfDiff) {
+    verdictBullet = `**Verdict**: ❌ NO BASELINE — this run was diffed against itself, so nothing was compared`;
+  } else if (failedMd) {
     verdictBullet = `**Verdict**: ❌ FAIL — ${compBlockers} component blocker(s) above ±${componentThreshold}% (≥${componentMinRenders} renders)`;
   } else {
     verdictBullet = `**Verdict**: ✅ PASS — 0 component blockers`;

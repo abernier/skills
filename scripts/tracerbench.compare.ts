@@ -38,6 +38,12 @@
  * frames borrowing the ms width.  And a repo whose spec writes no
  * `counters.json` gets the wall-clock comparison alone, with the frames and
  * draw-call columns dormant.
+ *
+ * What no width buys is silence about the numbers, never silence about the
+ * bench.  A run with no mark to compare — a leg that never reached the browser,
+ * two sides that share no mark — exits non-zero whatever the widths say, and
+ * reports `NO DATA`.  Summing an empty set gives `0ms` against `0ms`, and that
+ * is not a measurement of "no regression".
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -188,13 +194,25 @@ function extractTests(report: PlaywrightReport) {
   return tests;
 }
 
-const control: PlaywrightReport = JSON.parse(readFileSync(controlPath, "utf8"));
-const experiment: PlaywrightReport = JSON.parse(
-  readFileSync(experimentPath, "utf8"),
-);
+/**
+ * The marks one side timed, or an empty map when that side never got that far.
+ *
+ * A leg whose web server never starts still leaves a report behind — the JSON
+ * reporter writes `{ "suites": [], "errors": [ … ] }` and exits — so "the file
+ * is there" says nothing about whether anything was measured. A leg killed
+ * earlier still leaves no file at all. Both are the same fact downstream, and
+ * both arrive here as zero marks.
+ *
+ * @param path - the Playwright JSON report to read
+ */
+function readTests(path: string) {
+  if (!existsSync(path)) return new Map<string, number>();
+  const report: PlaywrightReport = JSON.parse(readFileSync(path, "utf8"));
+  return extractTests(report);
+}
 
-const controlTests = extractTests(control);
-const experimentTests = extractTests(experiment);
+const controlTests = readTests(controlPath);
+const experimentTests = readTests(experimentPath);
 
 // ── Render counters ─────────────────────────────────────────────
 // The spec writes `counters.json` beside its report. It is optional: without
@@ -369,6 +387,48 @@ const hasDrift =
   onlyInExperiment.length > 0 ||
   bailedRows.length > 0;
 
+// ── Nothing to compare ──────────────────────────────────────────
+// A comparison over no shared mark is not a measurement of "no regression", it
+// is the absence of a measurement — and left to itself it reads as the best
+// result there is: `0ms` against `0ms`, a delta of `0.0%`, inside any width a
+// repo could declare. Seen in production, on a run whose control leg never
+// started because something else held its port: the JSON reporter still wrote
+// `{ "suites": [], "errors": [ … ] }`, this file read it, found nothing in
+// common with the experiment, and printed a pass.
+//
+// Where the line falls, and it is not where it first looks. "This side ran and
+// had nothing to say about mark X" is drift — already detected, already
+// reported, already excluded from the gated total — and it leaves the side's
+// other marks to compare. What is not a comparison is the *gated total having
+// no row under it*, so that, and not either report's emptiness, is the
+// condition: `rows.length === 0`.
+//
+// Emptiness would have been the tempting condition and it is too narrow. The
+// second repo this was seen in reported `0 compared, 12 only on experiment,
+// 1 only on control` — a control leg that died partway, one mark to its name,
+// and no mark in common with the other side. A "the control report is empty"
+// test reads that as a healthy side. An empty intersection does not.
+//
+// What it is emphatically not read off is the leg's exit status. A spec can
+// fail an assertion and still have timed every mark, and voiding a real
+// measurement over that would be a different bug — which is why a failing leg
+// still gets compared, and why a leg that exited 0 with nothing to show still
+// does not.
+//
+// Three shapes reach here, then, and the reason below names which: a side that
+// timed nothing at all, two sides sharing no mark, and every shared mark
+// bailing on one side.
+const emptySides = [
+  controlTests.size === 0 ? "control" : "",
+  experimentTests.size === 0 ? "experiment" : "",
+].filter(Boolean);
+const noData = rows.length === 0;
+const noDataReason = emptySides.length
+  ? `the ${emptySides.join(" and ")} leg${emptySides.length > 1 ? "s" : ""} timed no marks at all, so ${emptySides.length > 1 ? "they never ran; their" : "it never ran; its"} own output says why`
+  : bailedRows.length > 0 && !onlyInControl.length && !onlyInExperiment.length
+    ? "every shared mark bailed on one side, so none of them measured a gesture against a gesture"
+    : "the two sides have no mark in common, so there was nothing to put side by side";
+
 /** Rows carrying counters on both sides — the ones the frames gate sums. */
 const countedRows = rows.filter((r) => r.ctrlCounters && r.expCounters);
 const hasCounters = countedRows.length > 0;
@@ -486,6 +546,12 @@ const totalExpDraws = countedRows.reduce(
 const exceeded = msExceeded || framesExceeded;
 /** Is any signal being judged at all? No width declared, nothing is. */
 const gated = msGated || framesGated;
+/**
+ * Does this run exit non-zero? A regression where a width was declared — or a
+ * run with nothing to compare, whatever the widths say. An absent width means
+ * "do not judge my numbers", never "do not tell me the bench did not run".
+ */
+const failed = exceeded || noData;
 
 // The status line names the total that failed — "over threshold" alone leaves
 // the reader guessing which of the two signals moved. With only one signal
@@ -503,6 +569,13 @@ const gates = `${gateWidths.length > 1 ? "thresholds" : "threshold"} of ${gateWi
 const verdictFor = (msTotal: string) => {
   const framesTotal = `frames ${framesIndicator}`;
   const measured = hasCounters ? [msTotal, framesTotal] : [msTotal];
+
+  // Before anything about thresholds: the totals below are sums over an empty
+  // set, and "within threshold" over an empty set is the false green this
+  // guard exists for.
+  if (noData) {
+    return `nothing was compared — ${noDataReason}. A bench that measured nothing is not a pass, however wide or narrow its widths are.`;
+  }
 
   // No width declared anywhere: report the numbers and say plainly that nothing
   // judged them. "within" would claim a bar was cleared when none was set.
@@ -547,9 +620,10 @@ if (hasCounters) {
 console.log(...totalCells);
 console.log("");
 
-// Three states, not two: failed, passed, and never asked to pass — a green tick
-// on an ungated run would read as a bar cleared.
-console.log(`${exceeded ? "❌" : gated ? "✅" : "📊"} ${verdict}`);
+// Four states, not two: nothing measured, over the width, within it, and never
+// asked to pass — a green tick on an ungated run would read as a bar cleared,
+// and one on an empty run would read as a bench that ran.
+console.log(`${failed ? "❌" : gated ? "✅" : "📊"} ${verdict}`);
 
 if (hasDrift) {
   console.log("");
@@ -582,11 +656,13 @@ if (mdOutputPath) {
   const mdVerdict = verdictFor(
     hasCounters ? `ms ${totalIndicator}` : `total regression ${totalIndicator}`,
   );
-  const statusLine = exceeded
-    ? `❌ **FAIL** — ${mdVerdict}`
-    : gated
-      ? `✅ **PASS** — ${mdVerdict}`
-      : `📊 **NO GATE** — ${mdVerdict}`;
+  const statusLine = noData
+    ? `❌ **NO DATA** — ${mdVerdict}`
+    : exceeded
+      ? `❌ **FAIL** — ${mdVerdict}`
+      : gated
+        ? `✅ **PASS** — ${mdVerdict}`
+        : `📊 **NO GATE** — ${mdVerdict}`;
 
   const md = [
     "## 📊 TracerBench — mark duration comparison",
@@ -604,7 +680,11 @@ if (mdOutputPath) {
 
   if (hasDrift) {
     md.push(
-      `⚠️ **Step drift** — comparing **${sharedCount}** shared step(s); ${onlyInExperiment.length} only on experiment, ${onlyInControl.length} only on control, ${bailedRows.length} bailed on one side. Likely a testid rename or new step on this branch — the diverging steps will be measured once it merges into the control branch.`,
+      // The "likely a rename" reading only holds while something *was*
+      // compared. At zero shared steps it is the sentence that framed a leg
+      // which never ran as a benign test-id rename, so the status line above
+      // is left to say what happened instead.
+      `⚠️ **Step drift** — comparing **${sharedCount}** shared step(s); ${onlyInExperiment.length} only on experiment, ${onlyInControl.length} only on control, ${bailedRows.length} bailed on one side.${sharedCount > 0 ? " Likely a testid rename or new step on this branch — the diverging steps will be measured once it merges into the control branch." : ""}`,
       "",
       "<details>",
       "<summary>Diverging steps</summary>",
@@ -692,9 +772,11 @@ if (mdOutputPath) {
   console.log(`Markdown summary written to ${mdOutputPath}`);
 }
 
-// ── Exit with error if threshold exceeded ───────────────────────
+// ── Exit ────────────────────────────────────────────────────────
 // `exceeded` can only be true where a width was declared, so an ungated run
-// falls through to 0 however far the totals moved.
-if (exceeded) {
+// falls through to 0 however far the totals moved. `noData` ignores the widths
+// entirely: an ungated run still reports what it measured, and a run that
+// measured nothing has nothing to report.
+if (failed) {
   process.exit(1);
 }
