@@ -38,7 +38,7 @@ A [Claude Code plugin](https://code.claude.com/docs/en/plugins).
 
   Needs `cloc` for the breakdown (`brew install cloc`); without it the total
   still prints. A repo excludes more than the defaults — lockfiles, prose,
-  vendored trees, assets — in `.claude/branchstat.json`:
+  vendored trees, assets — in `branchstat.json` at its root:
 
   ```json
   { "exclude": ["packages/www/public/", "src/generated/", "*.snap"] }

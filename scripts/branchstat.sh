@@ -34,7 +34,7 @@
 # The breakdown excludes everything that isn't hand-written product/tooling code
 # — lockfiles, prose, vendored and generated trees, assets and fixtures. The
 # defaults are in DEFAULT_EXCLUDES below; a repo adds its own in
-# `.claude/branchstat.json`:
+# `branchstat.json` at its root:
 #
 #   { "exclude": ["packages/www/public/", "src/generated/", "*.snap"] }
 #
@@ -270,9 +270,12 @@ elif [ -n "$(git status --porcelain)" ]; then
 fi
 
 # What the breakdown leaves out. Generic enough to be right in a repo that says
-# nothing; a repo that needs more says so in .claude/branchstat.json, and its
-# patterns are added to these rather than replacing them — the defaults are the
-# ones nobody would want back.
+# nothing; a repo that needs more says so in branchstat.json at its root, and
+# its patterns are added to these rather than replacing them — the defaults are
+# the ones nobody would want back. The file sits at the root and not under
+# `.claude/`, because it is committed repo config — what this repo does not
+# consider product code — read by a bash script that runs in CI with no Claude
+# in the loop, not per-user agent state.
 DEFAULT_EXCLUDES=(
   '*-lock.yaml' '*-lock.json' 'yarn.lock' 'bun.lockb'
   '*.md' '*.mdx' 'docs/' '.changeset/'
@@ -283,14 +286,14 @@ DEFAULT_EXCLUDES=(
 )
 
 excludes=("${DEFAULT_EXCLUDES[@]}")
-if [ -f "$ROOT_DIR/.claude/branchstat.json" ]; then
+if [ -f "$ROOT_DIR/branchstat.json" ]; then
   while IFS= read -r pattern; do
     [ -n "$pattern" ] && excludes+=("$pattern")
   done < <(node -e '
     const fs = require("node:fs");
     const cfg = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
     for (const p of cfg.exclude ?? []) console.log(p);
-  ' "$ROOT_DIR/.claude/branchstat.json")
+  ' "$ROOT_DIR/branchstat.json")
 fi
 
 # The same list in the two dialects that have to agree on it: git pathspecs for
