@@ -104,6 +104,16 @@ directory you run them from.
 `tsx` has to be yours: every script here runs under the `node_modules/.bin/tsx`
 of the repo being measured, and this package ships none of its own.
 
+Five subpaths, and they are everything a config or a spec imports:
+
+| subpath | what it is |
+| --- | --- |
+| `@abernier/skills/playwright` | `tracerbenchConfig()` and `profilerConfig()` — your two Playwright configs |
+| `@abernier/skills/gestures` | pointer and wheel primitives that move like a hand |
+| `@abernier/skills/profiler-scan` | the render-cause recorder: its `globalSetup`, and `SCAN_BUNDLE_PATH` |
+| `@abernier/skills/bench-types` | the report shapes the specs write against. Types only — `import type`, always |
+| `@abernier/skills/bench-tests` | the vitest plugin that runs the conformance check against your tree |
+
 #### The Playwright configs
 
 The benches talk to your `playwright test` run through eight environment
@@ -195,15 +205,9 @@ its state, or build its scene — stay in your repo and travel by
 #### The render-cause recorder
 
 The profiler's gate comes from a bippy recorder injected before React boots.
-Recorder and the `globalSetup` that bundles it both ship here — point your
-profiler config at the package and delete your local copies:
-
-```ts
-// playwright.profiler.config.ts
-export default defineConfig({
-  globalSetup: "@abernier/skills/profiler-scan",
-});
-```
+Recorder and the `globalSetup` that bundles it both ship here. `profilerConfig()`
+already names that setup, so your config says nothing about it — your spec asks
+for the bundle:
 
 ```ts
 // e2e/profiler.spec.ts
@@ -398,6 +402,18 @@ first-party files only, and this one lives under `node_modules`:
 `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`. It is a program, like the two
 comparers.
 
+The shapes above are declared once, and your spec reads them from there rather
+than writing them out a third time:
+
+```ts
+// e2e/profiler.spec.ts
+import type { CommitRecord, PerfIdStats } from "@abernier/skills/bench-types";
+```
+
+`import type` and nothing else — there is no runtime module behind that
+subpath. TypeScript erases the import before Node sees it, so the refusal above
+never applies to it.
+
 A single-package repo — one `src`, one `dist` — needs no configuration at all.
 Everything that differs is a value in `bench.json` at your repository root,
 never a fork in the code:
@@ -447,13 +463,14 @@ anything.
 
 </details>
 
-#### Running the compare suite against your own tree
+#### The conformance check against your own tree
 
-`profiler.compare.test.ts` ships with the package, and its last block is the one
-only you can run: it derives its subject from your `sourceRoots` at run time,
-and goes red when the source tree moved and `bench.json` did not — the
-misconfiguration that otherwise leaves the gate measuring nothing. One plugin
-collects it:
+`bench.conformance.test.ts` is the one check only you can run. It names no
+component and no path: it reads your `bench.json`, walks the `sourceRoots` it
+declares, and gates on whatever first-party component it finds — so it goes red
+when the source tree moved and `bench.json` did not, the misconfiguration that
+otherwise leaves the gate measuring nothing. This package's own tests stay in
+this package. One plugin collects the check:
 
 ```ts
 // vitest.config.ts
@@ -511,7 +528,7 @@ One gate, the same one CI runs:
 ```
 pnpm install
 pnpm exec playwright install chromium   # once, for the gesture suite
-pnpm run lgtm      # typecheck, shellcheck, the bash suites, vitest
+pnpm run lgtm      # typecheck, declarations, shellcheck, the bash suites, vitest
 ```
 
 `branchstat` carries its own suite because the bucketing regexes and the module
