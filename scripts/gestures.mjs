@@ -87,14 +87,17 @@ export async function smoothDrag(page, fromX, fromY, toX, toY, opts) {
  * @param {number} y
  * @param {{ deltaX?: number, deltaY?: number, ctrlKey?: boolean, shiftKey?: boolean }} [opts]
  */
-export async function wheel(
-  page,
-  x,
-  y,
-  { deltaX = 0, deltaY = 0, ctrlKey = false, shiftKey = false } = {},
-) {
+/**
+ * One notch, at the point, without touching the pointer. Private: every public
+ * entry point puts the pointer on the point first, once per gesture, and the
+ * ticks of a burst must not each fire a `mousemove` an app would have to handle.
+ */
+async function notch(page, x, y, { deltaX, deltaY, ctrlKey, shiftKey }) {
   if (!ctrlKey && !shiftKey) {
     await page.mouse.wheel(deltaX, deltaY);
+    // Playwright's wheel resolves once the event is sent, not once the page has
+    // it. Wait a frame so this call means the same thing the dispatched path
+    // does: the page has seen it, and the next line may assert on the effect.
     await page.evaluate(
       () => new Promise((resolve) => requestAnimationFrame(() => resolve(null))),
     );
@@ -120,19 +123,20 @@ export async function wheel(
   );
 }
 
-/**
- * A wheel gesture: `ticks` events at one point, spaced by `tickDelay` ms.
- *
- * `deltaX` and `deltaY` are the **totals** the gesture adds up to, split evenly
- * across the ticks — a hand rolls a wheel a distance, not a distance per notch.
- * The pointer is moved to the point first, so the ticks land where a wheel
- * would, and so `page.mouse.wheel` has somewhere to fire.
- *
- * @param {import("@playwright/test").Page} page
- * @param {number} x
- * @param {number} y
- * @param {{ deltaX?: number, deltaY?: number, ctrlKey?: boolean, shiftKey?: boolean, ticks?: number, tickDelay?: number }} [opts]
- */
+export async function wheel(
+  page,
+  x,
+  y,
+  { deltaX = 0, deltaY = 0, ctrlKey = false, shiftKey = false } = {},
+) {
+  // The pointer goes to the point on both paths. The dispatched one aims itself
+  // through `elementFromPoint`, but a trusted wheel fires wherever the pointer
+  // already sat — so without this, `x, y` would mean the point on one path and
+  // nothing at all on the other, under one signature.
+  await page.mouse.move(x, y);
+  await notch(page, x, y, { deltaX, deltaY, ctrlKey, shiftKey });
+}
+
 export async function wheelBurst(
   page,
   x,
@@ -141,7 +145,9 @@ export async function wheelBurst(
 ) {
   await page.mouse.move(x, y);
   for (let i = 0; i < ticks; i++) {
-    await wheel(page, x, y, {
+    await notch(page, x, y, {
+      ctrlKey: false,
+      shiftKey: false,
       ...modifiers,
       deltaX: deltaX / ticks,
       deltaY: deltaY / ticks,
@@ -149,3 +155,4 @@ export async function wheelBurst(
     if (tickDelay > 0) await page.waitForTimeout(tickDelay);
   }
 }
+

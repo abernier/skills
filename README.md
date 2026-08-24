@@ -137,6 +137,11 @@ gesture's **totals**, split evenly across the ticks.
 `WheelEvent`. That event is untrusted: listeners see it, native scrolling does
 not happen. Unmodified, it stays on Playwright's own wheel, which does scroll.
 
+Both paths put the pointer on the point first. The dispatched one aims itself,
+but a trusted wheel fires wherever the pointer already sat — so `x, y` would
+otherwise mean the point on one path and nothing at all on the other. A burst
+moves once, not once per tick: a gesture is one movement.
+
 Playwright's wheel also resolves *before* the page has the event — sent now,
 delivered a frame later — so that path waits one frame. Both paths therefore
 mean the same thing when they resolve: the page has had the event, and the next
