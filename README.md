@@ -4,6 +4,42 @@ A [Claude Code plugin](https://code.claude.com/docs/en/plugins).
 
 ## Contents
 
+### Skills
+
+The conventions an always-loaded instruction file used to carry, moved behind a
+trigger. A repo's `AGENTS.md` keeps one line per rule — the rule stated, nothing
+else — and the skill holds the why, the exception and the trap, loaded only when
+the work touches it. Cross-agent repos keep the rule; Claude gets the depth
+without paying for it on every task.
+
+- **`doc-routing`** — convention, vocabulary or decision: three kinds of
+  knowledge, three homes. Plus the JSDoc/doc/ADR test, and what an
+  always-loaded file may never hold.
+- **`module-layout`** — where a file goes and what earns being a module:
+  feature-oriented organisation, dot-scoped naming, one canonical home, no
+  façade re-exports, dependency inversion at a feature boundary, and the
+  proportionality check a new abstraction has to pass.
+- **`typescript-conventions`** — inferred types over annotations, `satisfies`,
+  JSDoc on every exported symbol, Zod as the runtime source of truth.
+- **`react-conventions`** — composition over prop threading, the
+  controlled/uncontrolled split and when it isn't worth it, `usehooks-ts`
+  first, the latest-ref antipattern, no manual memoisation under the compiler,
+  no hard-coded user-facing strings.
+- **`test-conventions`** — behaviour over implementation, browser tests over
+  e2e, `data-*` over visible text, a failing test before a fix, and the weighing
+  an expensive test has to survive.
+- **`visual-debugging`** — the URL is the repro, the DOM is the evidence, a test
+  is the verdict. Read attributes at full precision, drive real pointer input,
+  and put an aesthetic threshold behind a temporary toggle.
+- **`gates`** — the fast gate and the heavy one, why a gate must never be piped
+  into `tail`, why a clean rebase is not a correct rebase, and what a new
+  gesture owes the perf scenarios.
+- **`pre-1-0`** — breaking compatibility is free until it isn't: no shims, no
+  migrations, and the condition that flips the stance.
+
+They carry no repo's inventory — no paths, no symbols, no product rules. What a
+repo does differently stays in that repo.
+
 ### Agents
 
 - **`history-scout`** — reads the recent commit log as a topical index, then
