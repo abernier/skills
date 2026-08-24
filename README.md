@@ -208,6 +208,87 @@ there would miss yours.
 
 </details>
 
+#### On every PR
+
+Both benches on every pull request, without vendoring the pipeline: the workflow
+is reusable. The caller keeps the trigger, its `paths:` filter and its
+concurrency group — everything else is one `uses:`.
+
+```yaml
+# .github/workflows/perf.yml
+name: Perf
+
+on:
+  # `ready_for_review` lets a draft→ready transition trigger the run.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # Only when something the benches measure could have changed.
+    paths:
+      - "src/**"
+      - "e2e/**"
+      - "index.html"
+      - "vite.config.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "playwright.tracerbench.config.ts"
+      - "playwright.profiler.config.ts"
+      - "bench.json"
+      - ".github/workflows/perf.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  perf:
+    uses: abernier/skills/.github/workflows/perf.yml@v0.6.0
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      strict: false
+```
+
+It runs `tracerbench` and `profiler` as two legs of one matrix, marks the
+previous sticky comment stale while the run is in flight, posts one comment per
+bench and uploads the raw traces.
+
+Your repo provides three things: a `.nvmrc`, a `pnpm-lock.yaml`, and the
+`tracerbench` / `profiler` bins on `node_modules/.bin` — the `pnpm add -D` above
+is what puts them there. Nothing else. The workflow installs pnpm, Node and the
+Playwright browsers itself.
+
+<details>
+<summary>Inputs, and what stays in the caller</summary>
+
+| input | default | what it decides |
+| --- | --- | --- |
+| `strict` | `false` | Whether a regression reddens the PR. Strict runs `profiler --strict` and lets both benches fail the job; soft reports in the comment and exits green. |
+| `timeout-minutes` | `30` | Per-bench budget. Each bench builds and runs two sides. |
+| `skip-draft` | `true` | Skip while the PR is a draft. |
+| `artifact-retention-days` | `7` | How long raw traces are kept. |
+| `node-version-file` | `.nvmrc` | Where the Node version is read from. |
+
+`on:`, `paths:` and `concurrency:` cannot move into a called workflow and stay
+correct. The first two are repo-specific by definition. The third because
+`github.workflow` inside a called workflow resolves to the *caller's* workflow
+name, so the group belongs next to the trigger it cancels.
+
+The workflow installs the toolchain inline rather than calling a
+`./.github/actions/setup` of yours: a relative `uses:` inside a called workflow
+resolves against whatever is checked out in the workspace, which is your repo,
+not this one. Inlining is also what lets the action pins live in one place —
+they were two versions apart across the two repos that carried this file.
+
+`permissions:` go on the calling job. A called workflow can only narrow the
+token it is given, never widen it, so leaving them out here would not fail
+loudly — the comment step would just 403.
+
+Pin the exact tag while this is 0.x: `v0` moves, and a 0.x minor is allowed to
+break.
+
+</details>
+
 #### What the profiler spec writes
 
 The profiler runs in three moves — your spec records, `profiler-aggregate.ts`
