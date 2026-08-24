@@ -8,6 +8,7 @@
   "repository": "https://github.com/abernier/skills",
   "license": "MIT",
   "dependencies": [
-    { "name": "mattpocock-skills", "marketplace": "claude-plugins-official" }
+    { "name": "mattpocock-skills", "marketplace": "claude-plugins-official" },
+    { "name": "fallow", "marketplace": "fallow-skills" }
   ]
 }
