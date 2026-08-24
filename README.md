@@ -104,6 +104,60 @@ directory you run them from.
 `tsx` has to be yours: every script here runs under the `node_modules/.bin/tsx`
 of the repo being measured, and this package ships none of its own.
 
+#### Gestures for your specs
+
+A bench measures what a hand does, so the spec has to move like one. Four
+primitives, no app imports, importable from a spec:
+
+```ts
+import {
+  smoothDrag,
+  smoothMove,
+  wheel,
+  wheelBurst,
+} from "@abernier/skills/gestures";
+
+await smoothDrag(page, 200, 300, 600, 300, { steps: 40, stepDelay: 8 });
+await wheelBurst(page, 400, 300, { deltaY: -400, ctrlKey: true }); // pinch-zoom
+await wheelBurst(page, 400, 300, { deltaX: 300, ticks: 10, tickDelay: 25 }); // pan
+await wheel(page, 400, 300, { deltaY: -120, ctrlKey: true }); // one notch
+```
+
+`smoothMove` and `smoothDrag` walk a straight line one event at a time, with a
+delay between steps — `page.mouse.move(x, y, { steps })` fires its intermediate
+moves back to back, which is not what a `pointermove` handler is priced against.
+`wheelBurst` is `wheel` n times at one point; its `deltaX`/`deltaY` are the
+gesture's **totals**, split evenly across the ticks.
+
+<details>
+<summary>Why the wheel has two paths, and when the page has seen the event</summary>
+
+`page.mouse.wheel` drops modifier keys, and a pinch-zoom is exactly a wheel with
+`ctrlKey` — so `ctrlKey` or `shiftKey` switch `wheel` to a hand-dispatched
+`WheelEvent`. That event is untrusted: listeners see it, native scrolling does
+not happen. Unmodified, it stays on Playwright's own wheel, which does scroll.
+
+Playwright's wheel also resolves *before* the page has the event — sent now,
+delivered a frame later — so that path waits one frame. Both paths therefore
+mean the same thing when they resolve: the page has had the event, and the next
+line can assert on its effect.
+
+</details>
+
+The primitives ship as `.mjs` with types beside them, not as `.ts`. Node strips
+types in first-party files only; a `.ts` file under `node_modules` throws
+`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` the moment a spec imports it, and
+Playwright does not transform `node_modules` either.
+
+The control worktree resolves them through its own `node_modules`, so nothing
+about them needs copying. Gestures that *are* your app's — ones that reach for
+its state, or build its scene — stay in your repo and travel by
+`controlWorktreeCopy`:
+
+```json
+{ "controlWorktreeCopy": ["e2e/gestures.ts"] }
+```
+
 #### What the profiler spec writes
 
 The profiler runs in three moves — your spec records, `profiler-aggregate.ts`
@@ -293,6 +347,7 @@ One gate, the same one CI runs:
 
 ```
 pnpm install
+pnpm exec playwright install chromium   # once, for the gesture suite
 pnpm run lgtm      # typecheck, shellcheck, the bash suites, vitest
 ```
 
@@ -302,6 +357,13 @@ drives the shell entry point, so it covers the git and cloc plumbing and the
 TypeScript it pipes into. `tsc` is there because Node *strips* the report's
 types at run time and checks nothing; `erasableSyntaxOnly` keeps the file to
 what Node can strip.
+
+The gesture primitives carry one too, and it launches Chromium: a stub `Page`
+recording `mouse.move` calls would assert the implementation back at itself, and
+would catch neither of the things that actually break — a `WheelEvent` reaching
+no listener, or a wheel that quietly stopped scrolling. Without the browser the
+block skips itself and says so, the same deal `branchstat` strikes with `cloc`.
+CI installs it.
 
 `profiler-compare` carries a vitest suite for the same reason from the other
 side: it is a real module — a verdict, a normalisation, a codebase filter that
