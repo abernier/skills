@@ -2,7 +2,7 @@
 "@abernier/skills": minor
 ---
 
-The three shipped `.mjs` modules are typechecked, and their `.d.mts` siblings
+The shipped `.mjs` modules are typechecked, and their `.d.mts` siblings
 are generated from their JSDoc rather than hand-written beside them.
 
 `tsconfig.build.json` globs `scripts/*.mjs`, checks them under

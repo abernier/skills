@@ -14,9 +14,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "allowJs": true,
-    // The point of the exercise: these three files are now typechecked. Before
-    // this config they were in no program at all, and their declarations could
-    // claim anything.
+    // The point of the exercise: every `.mjs` this package exports is now
+    // typechecked. Before this config they were in no program at all, and their
+    // declarations could claim anything.
     "checkJs": true,
     "noEmit": false,
     "declaration": true,
@@ -28,7 +28,7 @@
   },
   // A glob, not a list: a `.mjs` added to `scripts/` is picked up without
   // anyone remembering this file exists. Only `.mjs` — so the `.ts` programs,
-  // the esbuild entry and the five suites stay out of the emit, and a
+  // the esbuild entry and the suites stay out of the emit, and a
   // hand-written `.d.mts` with no `.mjs` behind it is never overwritten.
   "include": ["scripts/*.mjs"]
 }
