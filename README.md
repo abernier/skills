@@ -196,6 +196,20 @@ never a fork in the code:
 }
 ```
 
+**No threshold declared, no gate.** A gate width is your repo's calibration on
+your machine, so there is no default that could be right — run the bench with
+the same build on both sides a few times, and the spread it reports is your
+floor. Until you declare one, `tracerbench` builds both sides, measures, and
+writes its comment with every number and delta, then exits 0 without judging:
+
+```json
+{ "thresholds": { "tracerbenchMs": 20 } }
+```
+
+That gates wall clock at +20%, and frames at +20% too — frames borrows the ms
+width when it declares none of its own. Declare `tracerbenchFrames` alone to
+gate frames and leave wall clock open.
+
 <details>
 <summary>Every key, and what it defaults to</summary>
 
@@ -209,9 +223,9 @@ anything.
 | `workspacePackages` | none | packages whose own `node_modules` the control worktree needs symlinked, alongside the root one. A single-package repo names none. |
 | `distDir` | `"dist"` | where `pnpm run build` leaves the bundle. |
 | `controlWorktreeCopy` | none | extra repo-relative files the control worktree needs, on top of the specs and configs every repo copies — whatever else your spec imports. |
-| `thresholds.tracerbenchMs` | `20` | wall-clock regression gate, percent. |
-| `thresholds.tracerbenchFrames` | the ms width | rendered-frames gate, percent. |
-| `thresholds.localTracerbenchMs` | `10` | the same gate for `lgtm-perf.sh`, which runs about twice as tight as CI on the grounds that a quiet machine deserves a stricter bar. |
+| `thresholds.tracerbenchMs` | none — no wall-clock gate | wall-clock regression gate, percent. |
+| `thresholds.tracerbenchFrames` | the ms width, and no frames gate when that is unset too | rendered-frames gate, percent. |
+| `thresholds.localTracerbenchMs` | unset — `tracerbenchMs` stands, so no gate when that is unset too | the same gate for `lgtm-perf.sh`, where a quiet machine deserves a stricter bar than CI's. |
 | `thresholds.localTracerbenchFrames` | unset — `tracerbenchFrames` stands | frames, for that local gate. |
 
 </details>
