@@ -104,6 +104,35 @@ directory you run them from.
 `tsx` has to be yours: every script here runs under the `node_modules/.bin/tsx`
 of the repo being measured, and this package ships none of its own.
 
+#### The Playwright configs
+
+The benches talk to your `playwright test` run through eight environment
+variables. Both configs are built here, so you never write that list down:
+
+```ts
+// playwright.tracerbench.config.ts
+import { tracerbenchConfig } from "@abernier/skills/playwright";
+
+export default tracerbenchConfig({
+  command: ({ previewArgs }) => `vite preview ${previewArgs}`,
+});
+```
+
+```ts
+// playwright.profiler.config.ts
+import { profilerConfig } from "@abernier/skills/playwright";
+
+export default profilerConfig({
+  command: ({ port }) => `VITE_SERVER_PORT=${port} pnpm run dev`,
+});
+```
+
+Only your repo knows how its server is spelled, so `command` is yours — a
+function, because the port is derived from `TB_PORT` / `PROFILER_PORT` here.
+`timeout` is the other knob, and the returned object is a plain config you can
+spread. `@playwright/test` is a peer dependency: the configs are loaded by your
+Playwright, so they have to use your copy.
+
 #### Gestures for your specs
 
 A bench measures what a hand does, so the spec has to move like one. Four
