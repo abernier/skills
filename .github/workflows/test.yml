@@ -31,6 +31,11 @@ jobs:
       - name: Install cloc
         run: sudo apt-get update && sudo apt-get install -y cloc
 
+      # Same deal for the gesture suite: the browser is a separate download from
+      # the npm install, and the suite skips itself without one.
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
       # The same command as locally, so a green branch here is a green branch
       # there: typecheck, shellcheck, then the suite.
       - run: pnpm run lgtm

@@ -259,20 +259,15 @@ echo ""
 mkdir -p "$WORKTREE_DIR/e2e"
 cp "$ROOT_DIR/e2e/profiler.spec.ts" "$WORKTREE_DIR/e2e/profiler.spec.ts"
 cp "$ROOT_DIR/e2e/profiler-scan.setup.ts" "$WORKTREE_DIR/e2e/profiler-scan.setup.ts"
-# `e2e/gestures.ts` — shared human-like drag helpers — travels with the spec
-# when the repo has one, so the import resolves even where the control branch
-# predates the module. Conditional because it is the app's file, not the
-# harness's: a repo whose spec never reaches for it has none, and an
-# unconditional `cp` would kill the run under `set -e`. Everything else a
-# particular spec imports goes in `controlWorktreeCopy`; this one stays here
-# because both consumers have it and neither should have to declare it.
-if [[ -f "$ROOT_DIR/e2e/gestures.ts" ]]; then
-  cp "$ROOT_DIR/e2e/gestures.ts" "$WORKTREE_DIR/e2e/gestures.ts"
-fi
 cp "$ROOT_DIR/playwright.profiler.config.ts" "$WORKTREE_DIR/playwright.profiler.config.ts"
 # Whatever else this repo's spec reaches for, on top of that core. Same reason
 # every time: the control branch may predate the module, so the working tree's
-# copy has to travel with the spec.
+# copy has to travel with the spec. The gesture helpers used to be copied here
+# unconditionally, as the one file both consumers had; they now come from
+# `@abernier/skills/gestures`, which the worktree resolves through the
+# `node_modules` it was just given — the same one its `playwright` binary comes
+# from. A repo keeping app-specific gestures of its own declares that file here
+# like any other.
 while IFS= read -r rel; do
   mkdir -p "$WORKTREE_DIR/$(dirname "$rel")"
   cp "$ROOT_DIR/$rel" "$WORKTREE_DIR/$rel"
