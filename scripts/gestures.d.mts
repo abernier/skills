@@ -73,8 +73,11 @@ export declare function smoothDrag(
  * because `page.mouse.wheel` drops modifiers — listeners see it, native
  * scrolling does not happen.
  *
- * Either way the page has had the event by the time this resolves, so a spec
- * can assert on its effect straight after.
+ * Either way the pointer is put on the point first and the page has had the
+ * event by the time this resolves, so a spec can assert on its effect straight
+ * after. The pointer move matters: a trusted wheel fires wherever the pointer
+ * already sat, so without it `x, y` would mean the point on one path and
+ * nothing at all on the other.
  */
 export declare function wheel(
   page: Page,
@@ -92,7 +95,8 @@ export declare function wheel(
  * ```
  *
  * The deltas are the totals the gesture adds up to. The pointer moves to the
- * point first, then every tick goes through `wheel`.
+ * point once, not once per tick — a gesture is one movement, and an app with a
+ * `mousemove` handler should not have to process `ticks` of them.
  */
 export declare function wheelBurst(
   page: Page,

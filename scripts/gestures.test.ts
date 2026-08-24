@@ -51,6 +51,8 @@ const PAGE = `
       ctrlKey: e.ctrlKey,
       shiftKey: e.shiftKey,
       trusted: e.isTrusted,
+      x: e.clientX,
+      y: e.clientY,
     }),
     { passive: true },
   );
@@ -75,6 +77,8 @@ type Wheel = {
   ctrlKey: boolean;
   shiftKey: boolean;
   trusted: boolean;
+  x: number;
+  y: number;
 };
 
 const moves = (page: Page) =>
@@ -130,7 +134,15 @@ describe.skipIf(!browser)("gesture primitives", () => {
     await wheel(page, 400, 300, { deltaY: -120, ctrlKey: true });
 
     expect(await wheels(page)).toEqual([
-      { deltaX: 0, deltaY: -120, ctrlKey: true, shiftKey: false, trusted: false },
+      {
+        deltaX: 0,
+        deltaY: -120,
+        ctrlKey: true,
+        shiftKey: false,
+        trusted: false,
+        x: 400,
+        y: 300,
+      },
     ]);
   });
 
@@ -155,6 +167,20 @@ describe.skipIf(!browser)("gesture primitives", () => {
     const fired = await wheels(page);
     expect(fired).toHaveLength(4);
     expect(fired.every((w) => w.ctrlKey && w.deltaY === -100)).toBe(true);
+  });
+
+  it("fires a trusted wheel at the point it was given, not where the pointer sat", async () => {
+    // The two paths must agree on what `x, y` mean. The modified path dispatches
+    // at the point by construction; the trusted one fires wherever the pointer
+    // happens to be, so it has to be put there first. Park the pointer somewhere
+    // else and the notch must still land on the point.
+    await smoothMove(page, 10, 10, 60, 60, { steps: 1, stepDelay: 0 });
+
+    await wheel(page, 400, 300, { deltaY: 120 });
+
+    const [only] = await wheels(page);
+    expect(only.trusted).toBe(true);
+    expect([only.x, only.y]).toEqual([400, 300]);
   });
 
   it("puts the pointer on the point before the first tick", async () => {
