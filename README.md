@@ -83,18 +83,23 @@ The pipeline ships here; the scenarios stay yours — `e2e/*.spec.ts`,
 that run them.
 
 ```
-pnpm add -D github:abernier/skills#v0.4.1
+pnpm add -D github:abernier/skills#v0.4.2
 ```
 
 ```json
 {
   "scripts": {
-    "tracerbench": "bash node_modules/@abernier/skills/scripts/tracerbench.sh",
-    "profiler": "bash node_modules/@abernier/skills/scripts/profiler.sh",
-    "LGTM:perf": "bash node_modules/@abernier/skills/scripts/lgtm-perf.sh"
+    "tracerbench": "tracerbench",
+    "profiler": "profiler",
+    "LGTM:perf": "lgtm-perf"
   }
 }
 ```
+
+Every program here is a `bin` entry — `tracerbench`, `profiler`, `lgtm-perf`,
+`tracerbench-compare`, `profiler-compare`, `profiler-aggregate`. They resolve
+from `node_modules/.bin`, so nothing writes a path and nothing cares which
+directory you run them from.
 
 `tsx` has to be yours: every script here runs under the `node_modules/.bin/tsx`
 of the repo being measured, and this package ships none of its own.
@@ -162,7 +167,7 @@ alike.
 `profiler.sh` folds each side itself, before the diff:
 
 ```
-tsx node_modules/@abernier/skills/scripts/profiler-aggregate.ts \
+pnpm exec profiler-aggregate \
   profiler-results/experiment/commits.json \
   profiler-results/experiment/report.json
 ```
@@ -216,22 +221,35 @@ anything.
 `profiler-compare.test.ts` ships with the package, and its last block is the one
 only you can run: it derives its subject from your `sourceRoots` at run time,
 and goes red when the source tree moved and `.claude/bench.json` did not — the
-misconfiguration that otherwise leaves the gate measuring nothing. Include the
-file, and narrow the default `exclude`, which covers `node_modules` and would
-hide it:
+misconfiguration that otherwise leaves the gate measuring nothing. One plugin
+collects it:
 
 ```ts
 // vitest.config.ts
-export default defineConfig({
-  test: {
-    include: [
-      "src/**/*.test.ts",
-      "node_modules/@abernier/skills/scripts/profiler-compare.test.ts",
-    ],
-    exclude: ["**/dist/**"],
-  },
-});
+import { defineConfig } from "vitest/config";
+import { benchTests } from "@abernier/skills/vite";
+
+export default defineConfig({ plugins: [benchTests()] });
 ```
+
+<details>
+<summary>Why a plugin, and what it does to your config</summary>
+
+By hand it is two lines, not one: an `include` naming the file inside
+`node_modules`, and an `exclude` narrowed to let it through — vitest's default
+covers `node_modules`. Forget the second and nothing fails. The file is not
+collected, and the check is quietly dead again.
+
+The plugin adds a vitest **project** holding that one file. It rewrites neither
+your `include` nor your `exclude`, so what your config already collects it goes
+on collecting — and nothing else in `node_modules` comes along, which is what
+narrowing `exclude` really does.
+
+A config that declares no projects gains one: itself, as `{ extends: true }`.
+Your suite runs unchanged, under the label `|0|` where the verbose reporter
+prints one, next to `|bench|`.
+
+</details>
 
 ## Install
 

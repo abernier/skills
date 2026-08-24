@@ -11,7 +11,17 @@ set -uo pipefail
 # Two roots, never one — see the header of `tracerbench.sh`. `SCRIPT_DIR` holds
 # the two benches this runs; `ROOT_DIR` is the repository they measure, and the
 # directory their result files land in.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# The same scrub as `tracerbench.sh`, for the same reason: GIT_DIR and friends
+# win over `cwd` and over `-C`, so under a git hook every git call below would
+# answer about the hook's repository instead of the one being measured.
+# shellcheck disable=SC2046  # intentional word-splitting of the var-name list
+unset $(git rev-parse --local-env-vars)
+
+# `BASH_SOURCE` through `realpath`: the `bin` entry installs this script as a
+# symlink in `node_modules/.bin`, and an unresolved `dirname` lands there —
+# where none of the siblings sourced below exist.
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "$ROOT_DIR" || exit 1
 

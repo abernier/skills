@@ -38,16 +38,46 @@ set -euo pipefail
 # and runs. `ROOT_DIR` is the repository being measured: every git operation,
 # `.claude/bench.json`, the specs, `node_modules` and its `tsx` are all its.
 # Confusing the two produces a plausible wrong number rather than an error.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# The same scrub as `tracerbench.sh`, for the same reason: GIT_DIR and friends
+# win over `cwd` and over `-C`, so under a git hook every git call below would
+# answer about the hook's repository instead of the one being measured.
+# shellcheck disable=SC2046  # intentional word-splitting of the var-name list
+unset $(git rev-parse --local-env-vars)
+
+# `BASH_SOURCE` through `realpath`: the `bin` entry installs this script as a
+# symlink in `node_modules/.bin`, and an unresolved `dirname` lands there —
+# where none of the siblings sourced below exist.
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 
-# The path a reader pastes to re-run this, resolved against the invocation cwd
-# *before* the `cd` below and expressed relative to the repo root — the scripts
-# live in `node_modules` now, so `scripts/profiler.sh` is no longer their
-# address and nothing here can write it down.
-SELF="$0"
-[[ "$SELF" == /* ]] || SELF="$PWD/$SELF"
-SELF="${SELF#"$ROOT_DIR"/}"
+# The command a reader pastes to re-run this.
+#
+# Named, not spelled out as a path, whenever this was reached through its `bin`
+# entry — which is how a repo runs it now. `$0` does not carry that name under
+# every package manager (npm symlinks the bin, pnpm execs the real file through
+# a shim), so it is recognised by basename instead: `profiler` and
+# `profiler.sh` are the same program, and both print as
+# `pnpm exec profiler`, which resolves from anywhere in the repo. That is
+# the point of the footer — a reader who doubts a number re-runs it without
+# reverse-engineering the workflow file — and a `node_modules/.pnpm/…` store
+# path in a PR comment is not something anyone pastes.
+#
+# `pnpm exec`, never `pnpm run … -- --flag`: the latter forwards the literal
+# `--` and dies on "Unknown option".
+#
+# Run under some other name — a vendored copy, a rename — there is no name to
+# print, and the footer falls back to `bash <path>`, resolved against the
+# invocation cwd *before* the `cd` below and expressed relative to the repo
+# root. The scripts live in `node_modules`, so `scripts/profiler.sh` is no
+# longer their address and nothing here can write it down.
+if [[ "$(basename "$0")" == "profiler" || "$(basename "$0")" == "profiler.sh" ]]; then
+  SELF="pnpm exec profiler"
+else
+  SELF="$0"
+  [[ "$SELF" == /* ]] || SELF="$PWD/$SELF"
+  SELF="bash ${SELF#"$ROOT_DIR"/}"
+fi
 
 # Every relative path below is repo-relative by construction, and
 # `profiler-compare.ts` resolves the repo it greps from its own cwd.
@@ -230,9 +260,16 @@ echo ""
 mkdir -p "$WORKTREE_DIR/e2e"
 cp "$ROOT_DIR/e2e/profiler.spec.ts" "$WORKTREE_DIR/e2e/profiler.spec.ts"
 cp "$ROOT_DIR/e2e/profiler-scan.setup.ts" "$WORKTREE_DIR/e2e/profiler-scan.setup.ts"
-# Spec imports `./gestures` (shared human-like drag helpers) — copy it too so
-# the import resolves when the control branch predates the shared module.
-cp "$ROOT_DIR/e2e/gestures.ts" "$WORKTREE_DIR/e2e/gestures.ts"
+# `e2e/gestures.ts` — shared human-like drag helpers — travels with the spec
+# when the repo has one, so the import resolves even where the control branch
+# predates the module. Conditional because it is the app's file, not the
+# harness's: a repo whose spec never reaches for it has none, and an
+# unconditional `cp` would kill the run under `set -e`. Everything else a
+# particular spec imports goes in `controlWorktreeCopy`; this one stays here
+# because both consumers have it and neither should have to declare it.
+if [[ -f "$ROOT_DIR/e2e/gestures.ts" ]]; then
+  cp "$ROOT_DIR/e2e/gestures.ts" "$WORKTREE_DIR/e2e/gestures.ts"
+fi
 cp "$ROOT_DIR/playwright.profiler.config.ts" "$WORKTREE_DIR/playwright.profiler.config.ts"
 # Whatever else this repo's spec reaches for, on top of that core. Same reason
 # every time: the control branch may predate the module, so the working tree's
@@ -345,7 +382,7 @@ fi
 # whether a regression exits non-zero — a command missing it reproduces the table
 # but not the verdict the comment reports. Spelling the defaults out keeps an old
 # comment reproducible after a default moves.
-REPRO="bash $SELF --control $CONTROL_BRANCH --threshold $THRESHOLD"
+REPRO="$SELF --control $CONTROL_BRANCH --threshold $THRESHOLD"
 if [[ -z "$SOFT_FLAG" ]]; then
   REPRO+=" --strict"
 fi

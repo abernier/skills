@@ -257,6 +257,17 @@ function checkCommits(value: unknown, where: string): asserts value is CommitRec
   });
 }
 
+/**
+ * How to name this program in a message the reader will retype.
+ *
+ * The `.sh` wrapper behind the `profiler-aggregate` bin entry passes the name
+ * it was invoked as. Absent it, `profiler.sh` is folding a side through the
+ * measured repo's `tsx`, and that spelling is the only true one.
+ */
+const INVOKED_AS =
+  process.env.BENCH_INVOKED_AS ??
+  "tsx node_modules/@abernier/skills/scripts/profiler-aggregate.ts";
+
 function main(argv: string[]): void {
   let inputPath: string | undefined;
   let outputPath: string | undefined;
@@ -267,7 +278,7 @@ function main(argv: string[]): void {
 
   if (!inputPath || !outputPath) {
     console.error(
-      "Usage: tsx node_modules/@abernier/skills/scripts/profiler-aggregate.ts <commits.json> <report.json>",
+      `Usage: ${INVOKED_AS} <commits.json> <report.json>`,
     );
     process.exit(2);
   }

@@ -3,14 +3,33 @@
   "version": "0.4.1",
   "private": true,
   "type": "module",
-  "files": ["scripts", "!scripts/branchstat*", "!scripts/release-tag.sh", "!scripts/sync-plugin-version.mts"],
+  "files": [
+    "scripts",
+    "!scripts/branchstat*",
+    "!scripts/release-tag.sh",
+    "!scripts/sync-plugin-version.mts"
+  ],
+  "bin": {
+    "tracerbench": "./scripts/tracerbench.sh",
+    "profiler": "./scripts/profiler.sh",
+    "lgtm-perf": "./scripts/lgtm-perf.sh",
+    "tracerbench-compare": "./scripts/tracerbench-compare.sh",
+    "profiler-compare": "./scripts/profiler-compare.sh",
+    "profiler-aggregate": "./scripts/profiler-aggregate.sh"
+  },
+  "exports": {
+    "./vite": {
+      "types": "./scripts/vite.d.mts",
+      "default": "./scripts/vite.mjs"
+    }
+  },
   "packageManager": "pnpm@10.33.4",
   "description": "Toolchain for the plugin's own scripts. The plugin itself installs nothing.",
   "scripts": {
     "changeset": "changeset",
     "changeset:version": "changeset version && node scripts/sync-plugin-version.mts",
     "typecheck": "tsc --noEmit",
-    "lint": "shellcheck --severity=warning scripts/branchstat.sh scripts/branchstat.test.sh scripts/release-tag.sh scripts/_bench-common.sh scripts/_bench-common.test.sh scripts/_bench-config.sh scripts/lgtm-perf.sh scripts/profiler.sh scripts/tracerbench.sh",
+    "lint": "shellcheck --severity=warning scripts/branchstat.sh scripts/branchstat.test.sh scripts/release-tag.sh scripts/_bench-common.sh scripts/_bench-common.test.sh scripts/_bench-config.sh scripts/lgtm-perf.sh scripts/profiler.sh scripts/profiler-aggregate.sh scripts/profiler-compare.sh scripts/tracerbench.sh scripts/tracerbench-compare.sh",
     "test": "bash scripts/branchstat.test.sh && bash scripts/_bench-common.test.sh && vitest run",
     "lgtm": "pnpm run typecheck && pnpm run lint && pnpm run test && echo 'LGTM!'"
   },
@@ -23,6 +42,8 @@
     "vitest": "^4.1.11"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

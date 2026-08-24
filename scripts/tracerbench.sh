@@ -19,16 +19,50 @@ set -euo pipefail
 # and runs. `ROOT_DIR` is the repository being measured: every git operation,
 # `.claude/bench.json`, the builds, `node_modules` and its `tsx` are all its.
 # Confusing the two produces a plausible wrong number rather than an error.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Git reads GIT_DIR and friends out of the environment and lets them win over
+# `cwd` — and over `-C`, so `git -C "$ROOT_DIR"` is no defence either. A git
+# hook exports them, and then `--show-toplevel` answers with the cwd, the bench
+# lock lands in the hook's repository and `git worktree add` checks the control
+# branch out of it. Everything below must answer about the repo being measured,
+# so drop git's own list of repo-local variables once, here, for this script and
+# for every child it spawns.
+# shellcheck disable=SC2046  # intentional word-splitting of the var-name list
+unset $(git rev-parse --local-env-vars)
+
+# `BASH_SOURCE` through `realpath`: the `bin` entry installs this script as a
+# symlink in `node_modules/.bin`, and an unresolved `dirname` lands there —
+# where none of the siblings sourced below exist.
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 
-# The path a reader pastes to re-run this, resolved against the invocation cwd
-# *before* the `cd` below and expressed relative to the repo root — the scripts
-# live in `node_modules` now, so `scripts/tracerbench.sh` is no longer their
-# address and nothing here can write it down.
-SELF="$0"
-[[ "$SELF" == /* ]] || SELF="$PWD/$SELF"
-SELF="${SELF#"$ROOT_DIR"/}"
+# The command a reader pastes to re-run this.
+#
+# Named, not spelled out as a path, whenever this was reached through its `bin`
+# entry — which is how a repo runs it now. `$0` does not carry that name under
+# every package manager (npm symlinks the bin, pnpm execs the real file through
+# a shim), so it is recognised by basename instead: `tracerbench` and
+# `tracerbench.sh` are the same program, and both print as
+# `pnpm exec tracerbench`, which resolves from anywhere in the repo. That is
+# the point of the footer — a reader who doubts a number re-runs it without
+# reverse-engineering the workflow file — and a `node_modules/.pnpm/…` store
+# path in a PR comment is not something anyone pastes.
+#
+# `pnpm exec`, never `pnpm run … -- --flag`: the latter forwards the literal
+# `--` and dies on "Unknown option".
+#
+# Run under some other name — a vendored copy, a rename — there is no name to
+# print, and the footer falls back to `bash <path>`, resolved against the
+# invocation cwd *before* the `cd` below and expressed relative to the repo
+# root. The scripts live in `node_modules`, so `scripts/tracerbench.sh` is no
+# longer their address and nothing here can write it down.
+if [[ "$(basename "$0")" == "tracerbench" || "$(basename "$0")" == "tracerbench.sh" ]]; then
+  SELF="pnpm exec tracerbench"
+else
+  SELF="$0"
+  [[ "$SELF" == /* ]] || SELF="$PWD/$SELF"
+  SELF="bash ${SELF#"$ROOT_DIR"/}"
+fi
 
 # Every relative path below is repo-relative by construction, and the comparer
 # resolves the repo it filters against from its own cwd.
@@ -208,7 +242,7 @@ echo "⏳ Comparing results…"
 # reports, so a repro command that leaves it to the default stops reproducing it
 # the day the default moves.
 emit_comment_footer "$RESULTS_DIR/comment.md" "$ROOT_DIR" \
-  "bash $SELF --control $CONTROL_BRANCH --threshold $THRESHOLD --frames-threshold $FRAMES_THRESHOLD"
+  "$SELF --control $CONTROL_BRANCH --threshold $THRESHOLD --frames-threshold $FRAMES_THRESHOLD"
 
 echo ""
 if [[ -f "$RESULTS_DIR/comment.md" ]]; then
