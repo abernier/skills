@@ -226,9 +226,20 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
+/**
+ * How to name this program in a message the reader will retype.
+ *
+ * The `.sh` wrapper behind the `profiler-compare` bin entry passes the name it was
+ * invoked as. Absent it, a bench is running this file through the measured
+ * repo's `tsx`, and that spelling is the only true one.
+ */
+const INVOKED_AS =
+  process.env.BENCH_INVOKED_AS ??
+  "tsx node_modules/@abernier/skills/scripts/profiler-compare.ts";
+
 if (!controlPath || !experimentPath) {
   console.error(
-    "Usage: tsx node_modules/@abernier/skills/scripts/profiler-compare.ts <control.json> <experiment.json> \\\n" +
+    `Usage: ${INVOKED_AS} <control.json> <experiment.json> \\\n` +
       "  [--md <output.md>] [--threshold <percent>] [--min-commits <n>]\\\n" +
       "  [--component-threshold <percent>] [--component-min-renders <n>] [--soft]",
   );

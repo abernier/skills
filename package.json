@@ -12,8 +12,10 @@
   "bin": {
     "tracerbench": "./scripts/tracerbench.sh",
     "profiler": "./scripts/profiler.sh",
+    "lgtm-perf": "./scripts/lgtm-perf.sh",
     "tracerbench-compare": "./scripts/tracerbench-compare.sh",
-    "profiler-compare": "./scripts/profiler-compare.sh"
+    "profiler-compare": "./scripts/profiler-compare.sh",
+    "profiler-aggregate": "./scripts/profiler-aggregate.sh"
   },
   "exports": {
     "./vite": {
@@ -27,7 +29,7 @@
     "changeset": "changeset",
     "changeset:version": "changeset version && node scripts/sync-plugin-version.mts",
     "typecheck": "tsc --noEmit",
-    "lint": "shellcheck --severity=warning scripts/branchstat.sh scripts/branchstat.test.sh scripts/release-tag.sh scripts/_bench-common.sh scripts/_bench-common.test.sh scripts/_bench-config.sh scripts/lgtm-perf.sh scripts/profiler.sh scripts/profiler-compare.sh scripts/tracerbench.sh scripts/tracerbench-compare.sh",
+    "lint": "shellcheck --severity=warning scripts/branchstat.sh scripts/branchstat.test.sh scripts/release-tag.sh scripts/_bench-common.sh scripts/_bench-common.test.sh scripts/_bench-config.sh scripts/lgtm-perf.sh scripts/profiler.sh scripts/profiler-aggregate.sh scripts/profiler-compare.sh scripts/tracerbench.sh scripts/tracerbench-compare.sh",
     "test": "bash scripts/branchstat.test.sh && bash scripts/_bench-common.test.sh && vitest run",
     "lgtm": "pnpm run typecheck && pnpm run lint && pnpm run test && echo 'LGTM!'"
   },

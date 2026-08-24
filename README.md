@@ -91,16 +91,15 @@ pnpm add -D github:abernier/skills#v0.4.2
   "scripts": {
     "tracerbench": "tracerbench",
     "profiler": "profiler",
-    "LGTM:perf": "bash node_modules/@abernier/skills/scripts/lgtm-perf.sh"
+    "LGTM:perf": "lgtm-perf"
   }
 }
 ```
 
-`tracerbench`, `profiler` and the two comparers — `tracerbench-compare` and
-`profiler-compare` — are `bin` entries, so they resolve from `node_modules/.bin`
-and neither writes a path nor cares which directory you run them from.
-`lgtm-perf.sh` is not one: it is the two benches chained, and a repo that wants
-that gate names it once, here.
+Every program here is a `bin` entry — `tracerbench`, `profiler`, `lgtm-perf`,
+`tracerbench-compare`, `profiler-compare`, `profiler-aggregate`. They resolve
+from `node_modules/.bin`, so nothing writes a path and nothing cares which
+directory you run them from.
 
 `tsx` has to be yours: every script here runs under the `node_modules/.bin/tsx`
 of the repo being measured, and this package ships none of its own.
@@ -168,7 +167,7 @@ alike.
 `profiler.sh` folds each side itself, before the diff:
 
 ```
-tsx node_modules/@abernier/skills/scripts/profiler-aggregate.ts \
+pnpm exec profiler-aggregate \
   profiler-results/experiment/commits.json \
   profiler-results/experiment/report.json
 ```

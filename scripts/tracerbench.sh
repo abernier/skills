@@ -36,13 +36,33 @@ unset $(git rev-parse --local-env-vars)
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 
-# The path a reader pastes to re-run this, resolved against the invocation cwd
-# *before* the `cd` below and expressed relative to the repo root — the scripts
-# live in `node_modules` now, so `scripts/tracerbench.sh` is no longer their
-# address and nothing here can write it down.
-SELF="$0"
-[[ "$SELF" == /* ]] || SELF="$PWD/$SELF"
-SELF="${SELF#"$ROOT_DIR"/}"
+# The command a reader pastes to re-run this.
+#
+# Named, not spelled out as a path, whenever this was reached through its `bin`
+# entry — which is how a repo runs it now. `$0` does not carry that name under
+# every package manager (npm symlinks the bin, pnpm execs the real file through
+# a shim), so it is recognised by basename instead: `tracerbench` and
+# `tracerbench.sh` are the same program, and both print as
+# `pnpm exec tracerbench`, which resolves from anywhere in the repo. That is
+# the point of the footer — a reader who doubts a number re-runs it without
+# reverse-engineering the workflow file — and a `node_modules/.pnpm/…` store
+# path in a PR comment is not something anyone pastes.
+#
+# `pnpm exec`, never `pnpm run … -- --flag`: the latter forwards the literal
+# `--` and dies on "Unknown option".
+#
+# Run under some other name — a vendored copy, a rename — there is no name to
+# print, and the footer falls back to `bash <path>`, resolved against the
+# invocation cwd *before* the `cd` below and expressed relative to the repo
+# root. The scripts live in `node_modules`, so `scripts/tracerbench.sh` is no
+# longer their address and nothing here can write it down.
+if [[ "$(basename "$0")" == "tracerbench" || "$(basename "$0")" == "tracerbench.sh" ]]; then
+  SELF="pnpm exec tracerbench"
+else
+  SELF="$0"
+  [[ "$SELF" == /* ]] || SELF="$PWD/$SELF"
+  SELF="bash ${SELF#"$ROOT_DIR"/}"
+fi
 
 # Every relative path below is repo-relative by construction, and the comparer
 # resolves the repo it filters against from its own cwd.
@@ -222,7 +242,7 @@ echo "⏳ Comparing results…"
 # reports, so a repro command that leaves it to the default stops reproducing it
 # the day the default moves.
 emit_comment_footer "$RESULTS_DIR/comment.md" "$ROOT_DIR" \
-  "bash $SELF --control $CONTROL_BRANCH --threshold $THRESHOLD --frames-threshold $FRAMES_THRESHOLD"
+  "$SELF --control $CONTROL_BRANCH --threshold $THRESHOLD --frames-threshold $FRAMES_THRESHOLD"
 
 echo ""
 if [[ -f "$RESULTS_DIR/comment.md" ]]; then

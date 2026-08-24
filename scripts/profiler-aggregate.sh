@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ──────────────────────────────────────────────────────────────────────────────
-# `tracerbench-compare.ts` as a command — the `tracerbench-compare` bin entry.
+# `profiler-aggregate.ts` as a command — the `profiler-aggregate` bin entry.
 #
 # The bin cannot point at the `.ts` file: it needs a TypeScript loader, and the
 # one this harness uses is deliberately the measured repo's own `tsx`. A
@@ -35,4 +35,4 @@ ROOT_DIR="$(git rev-parse --show-toplevel)"
 invoked_as="$(basename "$0")"
 export BENCH_INVOKED_AS="${invoked_as%.sh}"
 
-exec "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/tracerbench-compare.ts" "$@"
+exec "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler-aggregate.ts" "$@"
