@@ -1,7 +1,7 @@
 {
   "name": "abernier",
   "description": "Antoine Bernier's Claude Code plugin.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "author": { "name": "Antoine Bernier" },
   "homepage": "https://github.com/abernier/skills",
   "repository": "https://github.com/abernier/skills",
