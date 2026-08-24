@@ -1,5 +1,92 @@
 # @abernier/skills
 
+## 0.9.0
+
+### Minor Changes
+
+- [#41](https://github.com/abernier/skills/pull/41) [`553dacb`](https://github.com/abernier/skills/commit/553dacb3dc6dd18f62160a90cde60969c5f168e2) Thanks [@abernier](https://github.com/abernier)! - `fallow@fallow-skills` becomes a dependency, so installing this plugin installs
+  the dead-code analyser `module-layout` hands the import graph to.
+  
+  Cross-marketplace dependencies are blocked unless the root marketplace allows
+  them, so `fallow-skills` joins `allowCrossMarketplaceDependenciesOn`. Add that
+  marketplace once — `/plugin marketplace add fallow-rs/fallow-skills` — and the
+  dependency resolves itself.
+
+- [#29](https://github.com/abernier/skills/pull/29) [`207b9fd`](https://github.com/abernier/skills/commit/207b9fd5643d9f36942d18d8db2aa8afc2399e4a) Thanks [@abernier](https://github.com/abernier)! - The doctrine becomes skills.
+  
+  Eight skills — `doc-routing`, `module-layout`, `typescript-conventions`,
+  `react-conventions`, `test-conventions`, `visual-debugging`, `gates`, `pre-1-0`
+  — carrying the conventions an `AGENTS.md` used to spell out in full.
+  
+  That file kept the rule and the reason together, and paid for both on every task,
+  in every repo that copied it. Split, a rule lives here and loads when the work
+  actually touches it. A consuming repo keeps no copy at all — not the reason, not
+  the mechanism, not a one-line summary — because an echo is a second source of
+  truth that drifts, in the one file loaded on every task. What was three hundred
+  lines of always-on prose becomes a table of eight names.
+  
+  The bar for staying in the consumer is what a skill cannot know: the charter
+  governing edits to that very file, which has to be in force at the moment the
+  file is edited; what the repo does differently; and its own names and documents.
+  
+  Nothing here names a repo. A product stance, a schema shape, a gate's real
+  command name, the way one app versions its store: those stay with whoever owns
+  them.
+  
+  Nothing here re-states `mattpocock-skills` either. `doc-routing` hands the shape
+  of a decision record to `domain-modeling` and adds only the reason agentic work
+  needs on top — an approach tried and rejected, unrecorded, gets re-proposed every
+  few months. `module-layout` hands the deep-module vocabulary to `codebase-design`
+  and keeps the file-organisation half. Neither names a path, so a repo that never
+  ran that setup still routes correctly.
+
+- [#42](https://github.com/abernier/skills/pull/42) [`eb00f49`](https://github.com/abernier/skills/commit/eb00f49ddf9236655a050ed43a7c007bc953f500) Thanks [@abernier](https://github.com/abernier)! - A tracerbench run with no mark to compare no longer reads as a pass.
+  
+  `v0.8.0` fixed this for the profiler and claimed tracerbench never had it. It
+  did. Observed twice in the wild — `tilt` and `sizematters` — on `lgtm-perf` runs
+  that exited 0 and printed `tracerbench : ✅ pass`:
+  
+  ```
+  ❌ The control leg exited 1 — its output above says why.
+  ⏳ Comparing results…
+  Mark                          Control     Experiment      Delta
+  Total                             0ms            0ms       0.0%
+  ✅ Total regression 0.0% is within threshold of +25%
+  ⚠️  Step drift: 0 compared, 14 only on experiment, 0 only on control, 0 bailed on one side.
+  ```
+  
+  `v0.8.0` reasoned that a missing report takes the comparer down and `set -e`
+  takes the script with it. The report is not missing: Playwright's JSON reporter
+  writes one even when its `webServer` never starts — `suites: []`, one error. So
+  the comparer read a valid file, found nothing in common with the experiment,
+  summed an empty set to `0ms` against `0ms`, and called that within threshold.
+  `Step drift` reported `0 compared` and framed it as a benign test-id rename.
+  
+  **This will turn runs red that used to be green**, and that is the point: the
+  run that goes red is the one that compared nothing. Summing no marks gives
+  `+0.0%`, which is not a measurement of "no regression" — it is the absence of a
+  measurement.
+  
+  - The gate is the size of the compared intersection, not the exit status of a
+    leg. A leg can fail an assertion and still have timed every mark; voiding a
+    real measurement over that would be a different bug. Zero rows compared is
+    reported as `NO DATA`, on the console and in the PR comment, and exits
+    non-zero — with no threshold declared too. An absent width says "do not judge
+    my numbers"; it never said "do not tell me the bench did not run".
+  - A mark missing from one side is still drift, and still compared as before.
+    The three shapes that are not — a side that timed nothing at all, two sides
+    sharing no mark, and every shared mark bailing — are named in the verdict.
+  - A leg starts against a free port. `vite preview` binds `--strictPort`, and the
+    ports only came down in the exit trap, after the comparison — so a leg could
+    meet a port a previous run still held and die on
+    `http://localhost:4200 is already used`. That is the collision that produced
+    the false green. The same sweep now runs immediately before each leg binds.
+  - `tracerbench.sh` no longer dies at the comparer under `set -e`, so a red run
+    still emits the footer naming the commit its numbers belong to.
+  - The profiler's experiment-only comment no longer reads `Verdict: ✅ PASS`
+    under its own `❌ No baseline — nothing was compared` banner. Nothing was
+    gated wrongly there; the comment simply contradicted the exit code.
+
 ## 0.8.0
 
 ### Minor Changes
