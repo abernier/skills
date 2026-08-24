@@ -76,6 +76,8 @@ bucket eslint.config.ts config
 bucket lint-staged.config.mjs config
 bucket .prettierrc.json config
 bucket bench.json config "the bench harness's knobs, at the repo root"
+bucket branchstat.json config "what a repo disowns as product code, at its root"
+bucket .claude/settings.json config "Claude Code's own settings still belong there"
 bucket .github/workflows/ci.yml config
 bucket .github/scripts/mark-bench-comment-stale.cjs config
 bucket .husky/pre-commit config
@@ -441,16 +443,16 @@ if command -v cloc > /dev/null; then
   has "1 file changed, 30 insertions(+)" "$nonode" "no node: the total still prints"
   has "node not installed" "$nonode" "no node: it says which tool is missing"
 
-  # A repo says what else is not product code in `.claude/branchstat.json`, and
-  # the patterns have to reach both dialects: git's, or the total disagrees with
-  # the buckets, and cloc's, or the breakdown counts what the repo disowned.
+  # A repo says what else is not product code in `branchstat.json` at its root,
+  # and the patterns have to reach both dialects: git's, or the total disagrees
+  # with the buckets, and cloc's, or the breakdown counts what the repo disowned.
   cfg="$(mktemp -d)"
   (
     cd "$cfg" || exit 1
     git init -q . && git branch -M main
     git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
-    mkdir -p .claude generated
-    printf '{ "exclude": ["generated/"] }\n' > .claude/branchstat.json
+    mkdir -p generated
+    printf '{ "exclude": ["generated/"] }\n' > branchstat.json
     for i in $(seq 30); do printf 'export const g%s = %s\n' "$i" "$i"; done > generated/api.ts
     printf 'export const a = 1\n' > App.ts
     git add -A && git -c user.email=t@t -c user.name=t commit -q -m gen
@@ -460,7 +462,7 @@ if command -v cloc > /dev/null; then
   has "App.ts" "$cfgout" "config: the repo's own code still counts"
   case "$cfgout" in
     *'generated/api.ts'*) fail "config: an excluded tree reached the breakdown" ;;
-    *) pass "config: .claude/branchstat.json keeps a tree out of the breakdown" ;;
+    *) pass "config: branchstat.json keeps a tree out of the breakdown" ;;
   esac
   has "32 insertions" "$cfgout" "config: the total still counts what it excluded"
 

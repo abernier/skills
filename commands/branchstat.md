@@ -16,5 +16,5 @@ make. Add a sentence only where the user asked something the numbers answer.
 
 `--md` renders it as a PR comment instead, footer included. Without `cloc`
 installed only the total prints, and it says so. A repo excludes more than the
-defaults in `.claude/branchstat.json` — see the header of
+defaults in `branchstat.json` at its root — see the header of
 `${CLAUDE_PLUGIN_ROOT}/scripts/branchstat.sh`.
