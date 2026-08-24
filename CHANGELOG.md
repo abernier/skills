@@ -1,5 +1,81 @@
 # @abernier/skills
 
+## 0.8.0
+
+### Minor Changes
+
+- [#30](https://github.com/abernier/skills/pull/30) [`38a8093`](https://github.com/abernier/skills/commit/38a80936e085cb3867baa94c26cb4b6905384c65) Thanks [@abernier](https://github.com/abernier)! - A profiler run that measured only one side no longer reads as a pass.
+  
+  When the control leg failed to produce a report, `profiler.sh` diffed the
+  experiment report against itself — every row `0.0% ok` — printed
+  `✅ PASS — 0 component blockers` and exited 0, so `lgtm-perf` reported
+  `profiler : ✅ pass`. Two repos verified a release against that green. The
+  missing *experiment* report took the same route: "cannot proceed", exit 0.
+  
+  **This will turn runs red that used to be green**, and that is the point: the
+  run that goes red is the one that never compared anything. Two shapes of it —
+  a control branch that predates the harness, and a control whose installed
+  `@abernier/skills` is older than the config copied forward into its worktree
+  (`ERR_PACKAGE_PATH_NOT_EXPORTED` at config load). Both exit non-zero now.
+  
+  - A side that produced no report exits non-zero, in strict mode and in soft
+    mode alike. Soft is about *regressions* being advisory; it was never about a
+    bench that did not run. CI is unaffected in shape: the reusable `perf.yml`
+    already runs the bench under `continue-on-error` unless the caller asked for
+    `strict`, so a soft run still posts its comment and stays green.
+  - The experiment-only summary is still emitted — it is the deliverable on the
+    PR that introduces the bench to a repo — but its banner now says the run is
+    not a pass, and that the deltas are this run diffed against itself.
+  - Each leg's exit status is reported where it happens, instead of being
+    inferred pages later from a missing file. Both benches; `tracerbench.sh`
+    never had the false green (a missing report takes its comparer down, and
+    `set -e` with it) but reported the failure just as late.
+  - Under `--strict`, a regression no longer kills `profiler.sh` before the
+    footer naming the commit the numbers belong to.
+
+### Patch Changes
+
+- [#38](https://github.com/abernier/skills/pull/38) [`5dce58c`](https://github.com/abernier/skills/commit/5dce58c775ae0e55d6333cf9291003e0e2e9840a) Thanks [@abernier](https://github.com/abernier)! - The release commit no longer rewrites the version pin inside
+  `.github/workflows/perf.yml`.
+  
+  Pushing a change to a workflow file needs a `workflows` scope the Actions token
+  does not have, so a pin there does not go stale — it makes every release push
+  fail outright. The example in that file now reads `@vX.Y.Z`, and says why. The
+  README's install line still carries a real version and is still rewritten.
+
+- [#32](https://github.com/abernier/skills/pull/32) [`a603e4c`](https://github.com/abernier/skills/commit/a603e4c9c47ec942c24538b5add502a8c8cc1c12) Thanks [@abernier](https://github.com/abernier)! - The control worktree now runs the experiment's copy of this package.
+  
+  `profiler.sh` copies the experiment's `e2e/profiler.spec.ts` and
+  `playwright.profiler.config.ts` into the control worktree so both sides are
+  measured the same way. When the two lockfiles differ, the worktree installs the
+  control's own dependency tree — which pins whatever version of
+  `@abernier/skills` the control branch pinned, or none at all — and those two
+  files were then run against it. Both halves broke in the wild:
+  `ERR_PACKAGE_PATH_NOT_EXPORTED` where the base predated a subpath, and
+  `Cannot find package '@abernier/skills'` where the base predated the package.
+  Neither says anything about the PR: the branch that adds a bench can never have
+  a baseline that already ran it.
+  
+  The control supplies the application; the experiment supplies the apparatus.
+  This package is now laid over the installed tree after that install, so a PR
+  that adds the bench — or reaches for a subpath its base predates — still gets a
+  real comparison instead of a one-sided summary.
+  
+  - Copied, not symlinked. Node resolves a symlinked package from its real
+    location, so through a link this package's `@playwright/test` — its only peer
+    dependency — would come from the experiment's tree while the control's own
+    binary drives the run. A copy resolves upward through the worktree's
+    `node_modules`, which is the control's Playwright, which is the one running.
+  - The overlay is the only thing swapped. Everything else in the worktree stays
+    the control's, including its Playwright, its vite and its React.
+  - A failed overlay exits non-zero on the spot rather than benching the control
+    against a different harness.
+  - The fast path is untouched: when the lockfiles match, the worktree symlinks
+    the experiment's `node_modules` and already had the experiment's copy.
+  - `tracerbench.sh` needs none of this. Its control worktree only builds — both
+    measurement legs run from the repo root, against the root's config, spec and
+    `node_modules`.
+
 ## 0.7.0
 
 ### Minor Changes
