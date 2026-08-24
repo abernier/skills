@@ -5,7 +5,7 @@
  * and *why* — the same data the React DevTools "Why did this render?" panel shows.
  *
  * This file is **never** imported by the app or by the spec directly. It is
- * built into `profiler-results/scan-bundle.js` by `profiler-scan.setup.mjs`
+ * built into `profiler-results/scan-bundle.js` by `profiler.scan.setup.mjs`
  * beside it, and shipped to the page as raw script content. That keeps the
  * dependency on `bippy` and any version drift contained to test infrastructure
  * — both the control and the experiment branches receive byte-identical
@@ -34,28 +34,16 @@ import {
   type Fiber,
 } from "bippy";
 
-type RenderCause =
-  | { kind: "mount" }
-  | { kind: "props"; changed: string[] }
-  | { kind: "state" }
-  | { kind: "context"; names: string[] }
-  | { kind: "parent" }
-  | { kind: "force" };
-
-type RenderRecord = {
-  /** Component display name. Falls back to "Anonymous" for unnamed components. */
-  name: string;
-  /** Primary cause classification (mount > props > state > context > parent). */
-  cause: RenderCause;
-  /** `actualDuration` for this fiber (self time, no children). */
-  selfTime: number;
-  /** `baseDuration` (estimated time without memoization). */
-  baseTime: number;
-};
-
-type CommitRecord = {
-  renders: RenderRecord[];
-};
+// This file is the producer of these shapes; `bench.types.d.mts` is where they
+// are written down, and where `profiler.aggregate.ts` and every consuming repo's
+// spec read them. `import type` and nothing else: there is no runtime module
+// behind that file, and esbuild never sees this specifier because TypeScript
+// erases the import before the bundle is resolved.
+import type {
+  CommitRecord,
+  RenderCause,
+  RenderRecord,
+} from "./bench.types.d.mts";
 
 type ScanApi = {
   reset(): void;

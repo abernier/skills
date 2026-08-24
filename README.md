@@ -104,6 +104,45 @@ directory you run them from.
 `tsx` has to be yours: every script here runs under the `node_modules/.bin/tsx`
 of the repo being measured, and this package ships none of its own.
 
+Five subpaths, and they are everything a config or a spec imports:
+
+| subpath | what it is |
+| --- | --- |
+| `@abernier/skills/playwright` | `tracerbenchConfig()` and `profilerConfig()` — your two Playwright configs |
+| `@abernier/skills/gestures` | pointer and wheel primitives that move like a hand |
+| `@abernier/skills/profiler-scan` | the render-cause recorder: its `globalSetup`, and `SCAN_BUNDLE_PATH` |
+| `@abernier/skills/bench-types` | the report shapes the specs write against. Types only — `import type`, always |
+| `@abernier/skills/bench-tests` | the vitest plugin that runs the conformance check against your tree |
+
+#### The Playwright configs
+
+The benches talk to your `playwright test` run through eight environment
+variables. Both configs are built here, so you never write that list down:
+
+```ts
+// playwright.tracerbench.config.ts
+import { tracerbenchConfig } from "@abernier/skills/playwright";
+
+export default tracerbenchConfig({
+  command: ({ previewArgs }) => `vite preview ${previewArgs}`,
+});
+```
+
+```ts
+// playwright.profiler.config.ts
+import { profilerConfig } from "@abernier/skills/playwright";
+
+export default profilerConfig({
+  command: ({ port }) => `VITE_SERVER_PORT=${port} pnpm run dev`,
+});
+```
+
+Only your repo knows how its server is spelled, so `command` is yours — a
+function, because the port is derived from `TB_PORT` / `PROFILER_PORT` here.
+`timeout` is the other knob, and the returned object is a plain config you can
+spread. `@playwright/test` is a peer dependency: the configs are loaded by your
+Playwright, so they have to use your copy.
+
 #### Gestures for your specs
 
 A bench measures what a hand does, so the spec has to move like one. Four
@@ -166,15 +205,9 @@ its state, or build its scene — stay in your repo and travel by
 #### The render-cause recorder
 
 The profiler's gate comes from a bippy recorder injected before React boots.
-Recorder and the `globalSetup` that bundles it both ship here — point your
-profiler config at the package and delete your local copies:
-
-```ts
-// playwright.profiler.config.ts
-export default defineConfig({
-  globalSetup: "@abernier/skills/profiler-scan",
-});
-```
+Recorder and the `globalSetup` that bundles it both ship here. `profilerConfig()`
+already names that setup, so your config says nothing about it — your spec asks
+for the bundle:
 
 ```ts
 // e2e/profiler.spec.ts
@@ -294,8 +327,8 @@ break.
 
 #### What the profiler spec writes
 
-The profiler runs in three moves — your spec records, `profiler-aggregate.ts`
-folds, `profiler-compare.ts` diffs — and the spec only owns the first. It writes
+The profiler runs in three moves — your spec records, `profiler.aggregate.ts`
+folds, `profiler.compare.ts` diffs — and the spec only owns the first. It writes
 its raw commit log, and nothing else, to `$PROFILER_COMMITS`:
 
 ```ts
@@ -364,10 +397,22 @@ A log it cannot fold — unparseable, no `steps`, a step with no `commits`, a
 render with a cause the recorder never produces — exits 2 and stops the bench.
 An empty aggregate would read as "no regressions".
 
-Do not `import` `profiler-aggregate.ts` from your spec. Node strips types in
+Do not `import` `profiler.aggregate.ts` from your spec. Node strips types in
 first-party files only, and this one lives under `node_modules`:
 `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`. It is a program, like the two
 comparers.
+
+The shapes above are declared once, and your spec reads them from there rather
+than writing them out a third time:
+
+```ts
+// e2e/profiler.spec.ts
+import type { CommitRecord, PerfIdStats } from "@abernier/skills/bench-types";
+```
+
+`import type` and nothing else — there is no runtime module behind that
+subpath. TypeScript erases the import before Node sees it, so the refusal above
+never applies to it.
 
 A single-package repo — one `src`, one `dist` — needs no configuration at all.
 Everything that differs is a value in `bench.json` at your repository root,
@@ -413,23 +458,24 @@ anything.
 | `controlWorktreeCopy` | none | extra repo-relative files the control worktree needs, on top of the specs and configs every repo copies — whatever else your spec imports. |
 | `thresholds.tracerbenchMs` | none — no wall-clock gate | wall-clock regression gate, percent. |
 | `thresholds.tracerbenchFrames` | the ms width, and no frames gate when that is unset too | rendered-frames gate, percent. |
-| `thresholds.localTracerbenchMs` | unset — `tracerbenchMs` stands, so no gate when that is unset too | the same gate for `lgtm-perf.sh`, where a quiet machine deserves a stricter bar than CI's. |
+| `thresholds.localTracerbenchMs` | unset — `tracerbenchMs` stands, so no gate when that is unset too | the same gate for `bench.lgtm.sh`, where a quiet machine deserves a stricter bar than CI's. |
 | `thresholds.localTracerbenchFrames` | unset — `tracerbenchFrames` stands | frames, for that local gate. |
 
 </details>
 
-#### Running the compare suite against your own tree
+#### The conformance check against your own tree
 
-`profiler-compare.test.ts` ships with the package, and its last block is the one
-only you can run: it derives its subject from your `sourceRoots` at run time,
-and goes red when the source tree moved and `bench.json` did not — the
-misconfiguration that otherwise leaves the gate measuring nothing. One plugin
-collects it:
+`bench.conformance.test.ts` is the one check only you can run. It names no
+component and no path: it reads your `bench.json`, walks the `sourceRoots` it
+declares, and gates on whatever first-party component it finds — so it goes red
+when the source tree moved and `bench.json` did not, the misconfiguration that
+otherwise leaves the gate measuring nothing. This package's own tests stay in
+this package. One plugin collects the check:
 
 ```ts
 // vitest.config.ts
 import { defineConfig } from "vitest/config";
-import { benchTests } from "@abernier/skills/vite";
+import { benchTests } from "@abernier/skills/bench-tests";
 
 export default defineConfig({ plugins: [benchTests()] });
 ```
@@ -482,7 +528,7 @@ One gate, the same one CI runs:
 ```
 pnpm install
 pnpm exec playwright install chromium   # once, for the gesture suite
-pnpm run lgtm      # typecheck, shellcheck, the bash suites, vitest
+pnpm run lgtm      # typecheck, declarations, shellcheck, the bash suites, vitest
 ```
 
 `branchstat` carries its own suite because the bucketing regexes and the module

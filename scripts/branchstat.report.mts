@@ -4,7 +4,7 @@
  *
  * Usage — `branchstat.sh` is the entry point; it passes every option, so none of
  * them defaults here:
- *   cloc … | node --experimental-strip-types branchstat-report.mts --render …
+ *   cloc … | node --experimental-strip-types branchstat.report.mts --render …
  *   printf '%s\n' <path> … | node --experimental-strip-types … --classify
  *
  * `branchstat.sh` owns everything that talks to git and cloc: base resolution,
@@ -156,7 +156,7 @@ const opt = (name: string) => flags.get(name) ?? "";
 const num = (name: string) => {
   const v = Number(flags.get(name));
   if (!Number.isFinite(v)) {
-    process.stderr.write(`branchstat-report: --${name} is required\n`);
+    process.stderr.write(`branchstat.report: --${name} is required\n`);
     process.exit(2);
   }
   return v;

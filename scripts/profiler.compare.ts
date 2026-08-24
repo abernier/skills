@@ -23,7 +23,7 @@
  *    cumulative drift across many small components.
  *
  * Usage:
- *   tsx scripts/profiler-compare.ts <control.json> <experiment.json> \
+ *   tsx scripts/profiler.compare.ts <control.json> <experiment.json> \
  *     [--md <output.md>] [--threshold <percent>] [--min-commits <n>] \
  *     [--component-threshold <percent>] [--component-min-renders <n>] \
  *     [--include-external] [--soft]
@@ -45,15 +45,18 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readBenchConfig } from "./bench.config.mjs";
+
+// The two shapes this program reads out of the report are declared where they
+// are produced, not a second time here: `PerfIdStats` in the wire contract the
+// spec writes against, `ComponentStats` in the aggregator that folds it.
+// `import type` and nothing else — neither specifier survives to run time.
+import type { PerfIdStats } from "./bench.types.d.mts";
+import type { ComponentStats } from "./profiler.aggregate.ts";
 
 // ---------------------------------------------------------------------------
 // Types — must match the report shape written by e2e/profiler.spec.ts
 // ---------------------------------------------------------------------------
-
-type IdStats = {
-  mount: { count: number; actualMs: number; baseMs: number };
-  update: { count: number; actualMs: number; baseMs: number };
-};
 
 type SourceLoc = {
   fileName: string;
@@ -61,27 +64,11 @@ type SourceLoc = {
   columnNumber?: number;
 };
 
-type ComponentStats = {
-  renders: number;
-  selfTimeMs: number;
-  baseTimeMs: number;
-  causes: {
-    mount: number;
-    props: number;
-    state: number;
-    context: number;
-    parent: number;
-    force: number;
-  };
-  changedProps: Record<string, number>;
-  changedContexts: Record<string, number>;
-};
-
 type StepStats = {
   step: string;
   durationMs: number;
   totalCommits: number;
-  byId: Record<string, IdStats>;
+  byId: Record<string, PerfIdStats>;
   scanCommits?: number;
   byComponent?: Record<string, ComponentStats>;
 };
@@ -229,13 +216,13 @@ for (let i = 0; i < args.length; i++) {
 /**
  * How to name this program in a message the reader will retype.
  *
- * The `.sh` wrapper behind the `profiler-compare` bin entry passes the name it was
- * invoked as. Absent it, a bench is running this file through the measured
- * repo's `tsx`, and that spelling is the only true one.
+ * The `.sh` wrapper behind the `profiler-compare` bin entry passes that bin
+ * name. Absent it, a bench is running this file through the measured repo's
+ * `tsx`, and that spelling is the only true one.
  */
 const INVOKED_AS =
   process.env.BENCH_INVOKED_AS ??
-  "tsx node_modules/@abernier/skills/scripts/profiler-compare.ts";
+  "tsx node_modules/@abernier/skills/scripts/profiler.compare.ts";
 
 if (!controlPath || !experimentPath) {
   console.error(
@@ -265,7 +252,7 @@ if (cv !== ev) {
 }
 if (ev > KNOWN_SCHEMA_VERSION) {
   console.error(
-    `Report schemaVersion ${ev} is newer than this script supports (${KNOWN_SCHEMA_VERSION}). Update @abernier/skills' profiler-compare.ts.`,
+    `Report schemaVersion ${ev} is newer than this script supports (${KNOWN_SCHEMA_VERSION}). Update @abernier/skills' profiler.compare.ts.`,
   );
   process.exit(2);
 }
@@ -297,35 +284,25 @@ const REPO_ROOT = (() => {
 })();
 
 /**
- * Per-repo values, from `bench.json` at the measured repo's root — the same
- * file the bench shells read. Absent, or absent a key, means the defaults
- * below: one `src`, shadcn vendored under it. A file that exists but does not
- * parse is an error, not a default.
+ * Per-repo values, from `bench.json` at the measured repo's root — through the
+ * same reader the bench shells go through, so the defaults are the ones stated
+ * in `bench.config.mjs` rather than a second copy written down here.
  */
-const benchConfig: { sourceRoots?: string[]; shadcnUiRoot?: string } = (() => {
-  try {
-    return JSON.parse(
-      fs.readFileSync(path.join(REPO_ROOT, "bench.json"), "utf8"),
-    );
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
-    throw err;
-  }
-})();
+const benchConfig = readBenchConfig(REPO_ROOT);
 
 /**
  * The source roots, repo-relative and in search order. A single-package repo
  * has exactly one; a workspace names one per package holding components, and
  * they all go into the single grep invocation below.
  */
-const SOURCE_ROOTS = benchConfig.sourceRoots ?? ["src"];
+const SOURCE_ROOTS = benchConfig.sourceRoots;
 
 /**
  * Shadcn primitives are vendored here by its CLI. The repo's rule is to stay
  * stock with shadcn and never hand-edit what it vendors, so a render
  * regression inside one of these is not actionable.
  */
-const SHADCN_UI_ROOT = benchConfig.shadcnUiRoot ?? "src/components/ui/";
+const SHADCN_UI_ROOT = benchConfig.shadcnUiRoot;
 
 const sourceCache = new Map<string, SourceLoc | null>();
 
@@ -439,7 +416,7 @@ function isCodebaseComponent(name: string): boolean {
 // Diff #1 — zone commit counts (existing signal)
 // ---------------------------------------------------------------------------
 
-function sumCommits(s: IdStats | undefined): number {
+function sumCommits(s: PerfIdStats | undefined): number {
   if (!s) return 0;
   return s.mount.count + s.update.count;
 }

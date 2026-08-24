@@ -1,0 +1,34 @@
+// The `.mjs` modules this package exports, and their declarations.
+//
+// They are `.mjs` because Node refuses to strip types under `node_modules`, so
+// a consumer's spec can only import JavaScript from here. That used to mean a
+// hand-written `.d.mts` beside each one: a second file asserting what the first
+// one does, checked by nobody. `tsc` writes them now, from the JSDoc.
+//
+// A separate config because the root one cannot see these files at all. Its
+// `include` is the whole `scripts` directory, and TypeScript drops a `.mjs`
+// from a directory glob when a `.d.mts` of the same name sits beside it — the
+// declaration shadows its own source. A glob that matches only `*.mjs` has no
+// such sibling to prefer, so the sources come back.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    // The point of the exercise: every `.mjs` this package exports is now
+    // typechecked. Before this config they were in no program at all, and their
+    // declarations could claim anything.
+    "checkJs": true,
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    // Required by `--outDir`, which the staleness gate uses to emit into a
+    // scratch directory. With no `--outDir` each declaration still lands beside
+    // its source.
+    "rootDir": "."
+  },
+  // A glob, not a list: a `.mjs` added to `scripts/` is picked up without
+  // anyone remembering this file exists. Only `.mjs` — so the `.ts` programs,
+  // the esbuild entry and the suites stay out of the emit, and a
+  // hand-written `.d.mts` with no `.mjs` behind it is never overwritten.
+  "include": ["scripts/*.mjs"]
+}

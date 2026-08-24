@@ -1,4 +1,18 @@
 /**
+ * Playwright `globalSetup` for the render-cause recorder: it bundles the
+ * bippy-based scanner into a single IIFE the spec ships to the page.
+ *
+ * Shipped as `.mjs` on purpose. Node strips types in first-party files only, so
+ * a `.ts` file under `node_modules` throws `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`
+ * the moment Playwright loads it, and Playwright does not transform
+ * `node_modules` either. `profiler.scan.injected.ts` beside it stays TypeScript:
+ * nothing imports it, esbuild only ever reads it as an entry point and does its
+ * own transpilation.
+ *
+ * `profiler.scan.setup.d.mts` beside it is generated from the JSDoc below —
+ * `pnpm run types:emit`. Edit the JSDoc, not the declaration.
+ */
+/**
  * Absolute path of the recorder IIFE the spec injects.
  *
  * ```ts
@@ -12,7 +26,6 @@
  * `profiler-results/scan-bundle.js` under the current working directory.
  */
 export declare const SCAN_BUNDLE_PATH: string;
-
 /**
  * Playwright `globalSetup`: builds the recorder into `SCAN_BUNDLE_PATH`.
  *

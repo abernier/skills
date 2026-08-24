@@ -12,9 +12,13 @@
     // refuses nothing it cannot erase. This is the flag that says so: an enum or
     // a parameter property here fails the typecheck instead of the run.
     "erasableSyntaxOnly": true,
-    // `profiler-aggregate.test.ts` imports its subject by a `.ts` specifier —
+    // `profiler.aggregate.test.ts` imports its subject by a `.ts` specifier —
     // the one spelling Node's type stripping, vitest and tsx all resolve.
     "allowImportingTsExtensions": true
   },
+  // The `.mjs` modules the package exports are absent from this program: a
+  // directory glob drops a `.mjs` when a `.d.mts` of the same name sits beside
+  // it. `tsconfig.build.json` globs `*.mjs` alone, checks them, and writes
+  // those declarations. `pnpm run typecheck` runs both.
   "include": ["scripts"]
 }

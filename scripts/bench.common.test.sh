@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# _bench-common.test.sh — teardown, ports, the bench lock and argument parsing.
+# bench.common.test.sh — teardown, ports, the bench lock and argument parsing.
 #
 # Scope: the things a bench gets wrong silently. `trap_teardown` is the one that
 # looks like it works — `trap f EXIT INT TERM` also runs the teardown, it just
@@ -33,8 +33,8 @@ fails=0
 pass(){ printf '  \033[32m✓\033[0m %s\n' "$1"; }
 fail(){ printf '  \033[31m✗\033[0m %s\n' "$1"; fails=$((fails + 1)); }
 
-# shellcheck source=./_bench-common.sh
-source "$script_dir/_bench-common.sh"
+# shellcheck source=./bench.common.sh
+source "$script_dir/bench.common.sh"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -49,7 +49,7 @@ echo "bench harness:"
 cat > "$tmp/bench.sh" <<'INNER'
 set -u
 script_dir="$1"; log="$2"; mode="${3:-}"
-source "$script_dir/_bench-common.sh"
+source "$script_dir/bench.common.sh"
 teardown(){ echo "teardown" >> "$log"; }
 trap_teardown teardown
 echo "stage 1" >> "$log"
@@ -130,7 +130,7 @@ lockdir="$(git -C "$lockrepo" rev-parse --path-format=absolute --git-common-dir)
 cat > "$tmp/take-lock.sh" <<'INNER'
 set -u
 script_dir="$1"; repo="$2"; label="$3"; ready="${4:-}"
-source "$script_dir/_bench-common.sh"
+source "$script_dir/bench.common.sh"
 acquire_bench_lock "$repo" "$label"
 echo "took the lock"
 # A holder has to stay alive, or the next caller reads its pid as dead and

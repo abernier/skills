@@ -3,11 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  aggregateCommits,
-  type CommitRecord,
-  type RenderRecord,
-} from "./profiler-aggregate.ts";
+import { aggregateCommits } from "./profiler.aggregate.ts";
+import type { CommitRecord, RenderRecord } from "./bench.types.d.mts";
 
 /**
  * Tiny helper to keep the test bodies free of repetitive scaffolding —
@@ -141,7 +138,7 @@ describe("aggregateCommits", () => {
 // below is about the same thing: a commit log this cannot fold must stop the
 // run, because a report with an empty `byComponent` reads as "no regressions".
 
-const AGGREGATE = path.resolve(__dirname, "profiler-aggregate.ts");
+const AGGREGATE = path.resolve(__dirname, "profiler.aggregate.ts");
 
 /** The repo this file sits in — its `tsx`, exactly as `profiler.sh` finds it. */
 const CONSUMER = execFileSync("git", ["rev-parse", "--show-toplevel"], {
@@ -353,7 +350,7 @@ describe("profiler-aggregate CLI", () => {
     const r = runCli(
       commitLog({ commits: [{ renders: [] }] }),
       undefined,
-      path.join(link, "scripts", "profiler-aggregate.ts"),
+      path.join(link, "scripts", "profiler.aggregate.ts"),
     );
 
     expect(r.exitCode, r.stderr).toBe(0);
@@ -363,6 +360,6 @@ describe("profiler-aggregate CLI", () => {
   it("prints its usage when an output path is missing", () => {
     const r = runCli(commitLog({ commits: [] }), ["/nowhere/commits.json"]);
     expect(r.exitCode).toBe(2);
-    expect(r.stderr).toMatch(/Usage: tsx .*profiler-aggregate\.ts/);
+    expect(r.stderr).toMatch(/Usage: tsx .*profiler\.aggregate\.ts/);
   });
 });

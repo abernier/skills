@@ -4,31 +4,59 @@
   "private": true,
   "type": "module",
   "files": [
-    "scripts",
-    "!scripts/branchstat*",
-    "!scripts/release-tag.sh",
-    "!scripts/sync-plugin-version.mts"
+    "scripts/bench.common.sh",
+    "scripts/bench.config.d.mts",
+    "scripts/bench.config.mjs",
+    "scripts/bench.config.sh",
+    "scripts/bench.conformance.test.ts",
+    "scripts/bench.launch.sh",
+    "scripts/bench.lgtm.sh",
+    "scripts/bench.playwright.d.mts",
+    "scripts/bench.playwright.mjs",
+    "scripts/bench.tests.d.mts",
+    "scripts/bench.tests.mjs",
+    "scripts/bench.types.d.mts",
+    "scripts/gestures.d.mts",
+    "scripts/gestures.mjs",
+    "scripts/profiler.aggregate.sh",
+    "scripts/profiler.aggregate.ts",
+    "scripts/profiler.compare.sh",
+    "scripts/profiler.compare.ts",
+    "scripts/profiler.scan.injected.ts",
+    "scripts/profiler.scan.setup.d.mts",
+    "scripts/profiler.scan.setup.mjs",
+    "scripts/profiler.sh",
+    "scripts/tracerbench.compare.sh",
+    "scripts/tracerbench.compare.ts",
+    "scripts/tracerbench.sh"
   ],
   "bin": {
     "tracerbench": "./scripts/tracerbench.sh",
     "profiler": "./scripts/profiler.sh",
-    "lgtm-perf": "./scripts/lgtm-perf.sh",
-    "tracerbench-compare": "./scripts/tracerbench-compare.sh",
-    "profiler-compare": "./scripts/profiler-compare.sh",
-    "profiler-aggregate": "./scripts/profiler-aggregate.sh"
+    "lgtm-perf": "./scripts/bench.lgtm.sh",
+    "tracerbench-compare": "./scripts/tracerbench.compare.sh",
+    "profiler-compare": "./scripts/profiler.compare.sh",
+    "profiler-aggregate": "./scripts/profiler.aggregate.sh"
   },
   "exports": {
-    "./vite": {
-      "types": "./scripts/vite.d.mts",
-      "default": "./scripts/vite.mjs"
+    "./bench-tests": {
+      "types": "./scripts/bench.tests.d.mts",
+      "default": "./scripts/bench.tests.mjs"
+    },
+    "./bench-types": {
+      "types": "./scripts/bench.types.d.mts"
     },
     "./gestures": {
       "types": "./scripts/gestures.d.mts",
       "default": "./scripts/gestures.mjs"
     },
     "./profiler-scan": {
-      "types": "./scripts/profiler-scan.setup.d.mts",
-      "default": "./scripts/profiler-scan.setup.mjs"
+      "types": "./scripts/profiler.scan.setup.d.mts",
+      "default": "./scripts/profiler.scan.setup.mjs"
+    },
+    "./playwright": {
+      "types": "./scripts/bench.playwright.d.mts",
+      "default": "./scripts/bench.playwright.mjs"
     }
   },
   "packageManager": "pnpm@10.33.4",
@@ -36,10 +64,15 @@
   "scripts": {
     "changeset": "changeset",
     "changeset:version": "changeset version && node scripts/sync-plugin-version.mts",
-    "typecheck": "tsc --noEmit",
-    "lint": "shellcheck --severity=warning scripts/branchstat.sh scripts/branchstat.test.sh scripts/release-tag.sh scripts/_bench-common.sh scripts/_bench-common.test.sh scripts/_bench-config.sh scripts/lgtm-perf.sh scripts/profiler.sh scripts/profiler-aggregate.sh scripts/profiler-compare.sh scripts/tracerbench.sh scripts/tracerbench-compare.sh",
-    "test": "bash scripts/branchstat.test.sh && bash scripts/_bench-common.test.sh && vitest run",
-    "lgtm": "pnpm run typecheck && pnpm run lint && pnpm run test && echo 'LGTM!'"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
+    "types:emit": "tsc -p tsconfig.build.json",
+    "types:check": "rm -rf node_modules/.cache/skills-dts && tsc -p tsconfig.build.json --outDir node_modules/.cache/skills-dts && for f in node_modules/.cache/skills-dts/scripts/*.d.mts; do diff -u \"scripts/${f##*/}\" \"$f\" || exit 1; done",
+    "lint": "shellcheck --severity=warning scripts/branchstat.sh scripts/branchstat.test.sh scripts/release-tag.sh scripts/bench.common.sh scripts/bench.common.test.sh scripts/bench.config.sh scripts/bench.config.test.sh scripts/bench.launch.sh scripts/bench.lgtm.sh scripts/profiler.sh scripts/profiler.aggregate.sh scripts/profiler.compare.sh scripts/tracerbench.sh scripts/tracerbench.compare.sh",
+    "test": "bash scripts/branchstat.test.sh && bash scripts/bench.common.test.sh && bash scripts/bench.config.test.sh && vitest run",
+    "lgtm": "pnpm run typecheck && pnpm run types:check && pnpm run lint && pnpm run test && echo 'LGTM!'"
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.49"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.0",

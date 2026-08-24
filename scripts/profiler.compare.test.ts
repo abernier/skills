@@ -13,13 +13,13 @@ import {
 } from "vitest";
 
 /**
- * End-to-end tests for `scripts/profiler-compare.ts`.
+ * End-to-end tests for `scripts/profiler.compare.ts`.
  *
  * The compare script is structured as a CLI with top-level side effects
  * (arg parsing, file reads, console output, exit codes). Rather than
  * refactoring it into a library to test individual helpers, we drive it
  * as a subprocess: each test materialises minimal control + experiment
- * report JSONs, runs `tsx scripts/profiler-compare.ts <ctrl> <exp> ...`,
+ * report JSONs, runs `tsx scripts/profiler.compare.ts <ctrl> <exp> ...`,
  * and asserts on the resulting markdown / exit code.
  *
  * Subprocess startup (~500 ms each) keeps the suite slow-ish but the
@@ -27,7 +27,7 @@ import {
  * normalisation, schema gate, etc. all behave exactly as in CI.
  */
 
-const COMPARE = path.resolve(__dirname, "profiler-compare.ts");
+const COMPARE = path.resolve(__dirname, "profiler.compare.ts");
 
 /**
  * The environment with every repo-local git variable removed.
@@ -73,8 +73,8 @@ function repoRootFrom(dir: string) {
  * the plugin runs its own suite and `node_modules/@abernier/skills` when a
  * consumer includes the file — and there, the package directory has no
  * `node_modules/.bin/tsx` and no source tree, so every subprocess spawn came
- * back empty and the block at the bottom skipped the very repo it exists to
- * check. `git rev-parse --show-toplevel` lands on the repo either way, which is
+ * back empty and every subprocess-driven test skipped. `bench.conformance.test.ts`
+ * resolves it the same way, for the same reason. `git rev-parse --show-toplevel` lands on the repo either way, which is
  * the same resolution the shell scripts use — through `repoRootFrom`, so a hook
  * that exported GIT_DIR cannot turn it back into `__dirname`.
  */
@@ -94,8 +94,9 @@ const TSX = path.resolve(CONSUMER, "node_modules", ".bin", "tsx");
 // offers a component that lives under one root and under no other, so a
 // second-root hit could not be observed reliably.
 //
-// Two tests at the bottom run against the repo this suite is in instead, so
-// the wiring is pinned to a layout nobody arranged for the occasion.
+// A fixture cannot pin the wiring, though — point `sourceRoots` at a directory
+// that does not exist and every test here still passes. That is
+// `bench.conformance.test.ts`'s job, and it is the file a consumer runs.
 
 let fixtureRepo: string;
 
@@ -192,7 +193,8 @@ describe("repo resolution", () => {
     // in: with GIT_DIR set it answers with the cwd instead. Hooks export
     // GIT_DIR, so a consumer whose gate runs from `.husky/pre-commit` resolved
     // `CONSUMER` to the package directory inside `node_modules/.pnpm/…`, found
-    // no `tsx` there, and skipped the block that exists to check its tree.
+    // no `tsx` there, and skipped the conformance check that exists to look at
+    // its tree.
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "profiler-toplevel-"));
     try {
       const host = path.join(scratch, "host");
@@ -777,185 +779,5 @@ describe("profiler-compare verdict", () => {
     expect(r.markdown).toContain("`spherical`");
     // The offending prop count delta should appear next to the row.
     expect(r.markdown).toMatch(/spherical.*\+70/);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// The repo this suite is running in
-// ---------------------------------------------------------------------------
-//
-// The fixture repos above build their own trees, so they prove the rules but
-// not the wiring: point `sourceRoots` at a directory that does not exist and
-// every one of them still passes. This block is the one that notices — so it
-// names no component and no path, and asks the repo for a subject instead.
-
-/**
- * The repo this suite runs in, which is where the script's own `REPO_ROOT`
- * lands too: the child gets `REAL_REPO` as its cwd and resolves the root from
- * there, with the same `git rev-parse --show-toplevel` it uses in a consuming
- * repo — which is exactly how `CONSUMER` was resolved.
- */
-const REAL_REPO = CONSUMER;
-
-/** This repo's own bench config, read exactly the way the script reads it. */
-const realRepoConfig: { sourceRoots?: string[]; shadcnUiRoot?: string } =
-  (() => {
-    try {
-      return JSON.parse(
-        fs.readFileSync(path.join(REAL_REPO, "bench.json"), "utf8"),
-      );
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
-      throw err;
-    }
-  })();
-
-/**
- * Whether this repo is one the block below can say anything about.
- *
- * The harness ships as a package now, and that package has no `src` and no
- * application code at all — there is no component in it to gate on, and
- * asserting on the absence of one asserts nothing. But "the declared roots are
- * not there" is *also* the misconfiguration this block exists to catch, so the
- * two are told apart by whether the repo claims a source tree at all:
- *
- *  - `bench.json` names `sourceRoots` → the repo claims one. Whether those
- *    roots exist, and whether they hold anything first-party, is
- *    `aFirstPartyComponent`'s business — and it throws when they do not.
- *  - No config but a `src/` → the same thing against the built-in default.
- *  - Neither → nothing here claims to be measurable. That is this package
- *    running its own suite, and the block skips, by name and out loud.
- *
- * Only the last case skips. A consuming repo always lands in one of the first
- * two, so the throw still fires everywhere it means anything.
- */
-const CLAIMS_A_SOURCE_TREE =
-  realRepoConfig.sourceRoots !== undefined ||
-  fs.existsSync(path.join(REAL_REPO, "src"));
-
-if (!CLAIMS_A_SOURCE_TREE) {
-  console.warn(
-    `[profiler-compare] "against the repo it runs in" skipped: ${REAL_REPO} ` +
-      `declares no sourceRoots and has no src/, so it holds no component to ` +
-      `resolve. The fixture repos above still cover the rules — this block is ` +
-      `the one that catches a source tree the config has stopped matching.`,
-  );
-}
-
-/** Skips only when this repo claims no source tree at all — see above. */
-const describeAgainstThisRepo = describe.skipIf(!CLAIMS_A_SOURCE_TREE);
-
-/**
- * A first-party component of whatever repo this is, found the way
- * `lookupSource` would find it: a `.tsx` under one of the declared source
- * roots whose basename is also a name it defines. That is `lookupSource`'s own
- * tie-break, so the lookup lands on this file rather than on some other hit,
- * and the test pins the resolution instead of fighting it.
- *
- * Skips the vendored shadcn directory, which is deliberately not actionable,
- * and skips any name that also has a file there — the grep would be entitled
- * to resolve such a name to the vendored copy.
- *
- * Throws when it finds nothing. A test that quietly skips itself is worse than
- * no test, and finding nothing means the roots are wrong, which is exactly the
- * failure this block exists to catch.
- */
-function aFirstPartyComponent(): { name: string; file: string } {
-  const roots = realRepoConfig.sourceRoots ?? ["src"];
-  const shadcnRoot = realRepoConfig.shadcnUiRoot ?? "src/components/ui/";
-
-  const candidates: { name: string; file: string }[] = [];
-  const vendored = new Set<string>();
-
-  const walk = (dir: string) => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const abs = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name !== "node_modules") walk(abs);
-        continue;
-      }
-      if (!entry.name.endsWith(".tsx")) continue;
-      const name = entry.name.slice(0, -".tsx".length);
-      // The same guard the script applies before it greps at all.
-      if (!/^[A-Z][A-Za-z0-9_]+$/.test(name)) continue;
-      const rel = path.relative(REAL_REPO, abs).split(path.sep).join("/");
-      if (rel.startsWith(shadcnRoot)) {
-        vendored.add(name);
-        continue;
-      }
-      // The same definition shapes the script greps for.
-      const defines = new RegExp(
-        `function ${name}\\b|const ${name}\\s*=|class ${name}\\b`,
-      );
-      if (defines.test(fs.readFileSync(abs, "utf8"))) {
-        candidates.push({ name, file: rel });
-      }
-    }
-  };
-
-  for (const root of roots) {
-    const abs = path.join(REAL_REPO, root);
-    if (fs.existsSync(abs)) walk(abs);
-  }
-
-  const usable = candidates
-    .filter((c) => !vendored.has(c.name))
-    .sort((a, b) => a.file.localeCompare(b.file));
-
-  if (usable.length === 0) {
-    throw new Error(
-      `No first-party component found under ${roots.join(", ")}. ` +
-        `Either bench.json names roots this repo no longer has, or no ` +
-        `.tsx under them defines the component its basename names.`,
-    );
-  }
-  return usable[0];
-}
-
-describeAgainstThisRepo("profiler-compare against the repo it runs in", () => {
-  it("gates on a component the declared source roots really contain", () => {
-    // Nothing here is written down: the subject comes from the roots
-    // `bench.json` declares. Move the source tree without updating the config
-    // and there is no subject to find, which throws; point the config at a
-    // directory that exists but holds nothing first-party and the gate stops
-    // firing. Either way this goes red, and no fixture can tell.
-    const subject = aFirstPartyComponent();
-    const ctrl = makeReport([
-      makeStep("orbit", 20, 10, {
-        [subject.name]: { renders: 30, causes: { props: 30 } },
-      }),
-    ]);
-    const exp = makeReport([
-      makeStep("orbit", 20, 10, {
-        [subject.name]: { renders: 100, causes: { props: 100 } },
-      }),
-    ]);
-
-    const r = run(ctrl, exp, [], REAL_REPO);
-    expect(
-      r.exitCode,
-      `expected ${subject.name} (${subject.file}) to be actionable`,
-    ).toBe(1);
-    expect(r.markdown).toContain(subject.name);
-  });
-
-  it("does not gate on a name no source root contains", () => {
-    // The other half: resolving nothing means external, and external never
-    // gates. Without this, a lookup that resolved everything would pass above.
-    const absent = "NoSuchComponentAnywhereInThisRepo";
-    const ctrl = makeReport([
-      makeStep("orbit", 20, 10, {
-        [absent]: { renders: 25, causes: { props: 25 } },
-      }),
-    ]);
-    const exp = makeReport([
-      makeStep("orbit", 20, 10, {
-        [absent]: { renders: 100, causes: { props: 100 } },
-      }),
-    ]);
-
-    const r = run(ctrl, exp, [], REAL_REPO);
-    expect(r.exitCode).toBe(0);
-    expect(r.markdown).toMatch(/✅ PASS/);
   });
 });
