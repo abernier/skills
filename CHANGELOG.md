@@ -1,5 +1,139 @@
 # @abernier/skills
 
+## 0.7.0
+
+### Minor Changes
+
+- [#27](https://github.com/abernier/skills/pull/27) [`2092d85`](https://github.com/abernier/skills/commit/2092d85291abb125832daf7b21ce5e2cb6867e0f) Thanks [@abernier](https://github.com/abernier)! - The shipped `.mjs` modules are typechecked, and their `.d.mts` siblings
+  are generated from their JSDoc rather than hand-written beside them.
+  
+  `tsconfig.build.json` globs `scripts/*.mjs`, checks them under
+  `allowJs`/`checkJs`, and emits the declarations — committed, because consumers
+  install from a git tag and nothing builds on their side. `pnpm run types:emit`
+  regenerates them; `pnpm run lgtm` fails if regenerating would change anything.
+  
+  Repaired along the way, because a generated declaration is only as good as the
+  JSDoc behind it:
+  
+  - `gestures.mjs` had an orphaned JSDoc block, leaving `wheel` and `wheelBurst`
+    undocumented and every parameter of `wheel`, `wheelBurst` and `notch`
+    implicitly `any`.
+  - `bench.playwright.mjs` typed its `webServer` escape hatch as `object`, which
+    erased Playwright's own field types. It is
+    `Partial<NonNullable<PlaywrightTestConfig["webServer"]>>` again, and the eight
+    environment variables it documents now travel with the declaration.
+  - `bench.config.mjs` declared `BenchConfig` only in the file the generator
+    overwrites. It is a `@typedef` in the module now, so the type a consumer sees
+    is a projection of the reader rather than a claim about it.
+
+- [#27](https://github.com/abernier/skills/pull/27) [`2092d85`](https://github.com/abernier/skills/commit/2092d85291abb125832daf7b21ce5e2cb6867e0f) Thanks [@abernier](https://github.com/abernier)! - One meaning per separator in `scripts/`. A dot separates scopes
+  (`feature.subfeature.ext`), a hyphen joins words inside one name, and no file
+  carries a leading underscore. `bench.*` is what the two benches share;
+  `tracerbench.*` and `profiler.*` belong to one of them.
+  
+  Public command names are unchanged — `profiler-compare` is still
+  `profiler-compare`, even though its file is now `profiler.compare.sh`.
+  
+  BREAKING: the `./vite` export subpath is now `./bench-tests`, with no alias. The
+  subpath said "vite", the file said "vite", the export is `benchTests()`, the
+  plugin id is `@abernier/skills:bench-tests` and the vitest project is `"bench"` —
+  four names for one thing, folded into one.
+  
+  ```diff
+  -import { benchTests } from "@abernier/skills/vite";
+  +import { benchTests } from "@abernier/skills/bench-tests";
+  ```
+
+- [#27](https://github.com/abernier/skills/pull/27) [`2092d85`](https://github.com/abernier/skills/commit/2092d85291abb125832daf7b21ce5e2cb6867e0f) Thanks [@abernier](https://github.com/abernier)! - `bench.json` has one reader, and the three `.ts` bins have one launcher.
+  
+  `scripts/bench.config.mjs` is now the only thing that opens `bench.json`.
+  `profiler.compare.ts` used to open it a second time behind `bench.config.sh`'s
+  back, with its own defaults written again in a second language — `["src"]` for
+  `sourceRoots`, `"src/components/ui/"` for `shadcnUiRoot`, which are one
+  consumer's layout, in a file nobody would think to check. The defaults now live
+  in one place, `bench.config.sh` is a shell door onto that file, and its
+  `bench_config` / `bench_config_list` are unchanged.
+  
+  A bench also spends fewer processes on its config: the door asks `node` once
+  when it is sourced and answers every key from that in pure bash, where
+  `tracerbench.sh` used to pay a `node` start per key.
+  
+  `scripts/bench.launch.sh` holds what `tracerbench.compare.sh`,
+  `profiler.compare.sh` and `profiler.aggregate.sh` each carried a copy of — the
+  `GIT_DIR` scrub, the `realpath` on `BASH_SOURCE`, the measured repo's own `tsx`,
+  and the bin name the program prints in its usage. The three files stay, because
+  `bin` needs three paths and pnpm execs the file rather than a symlink named
+  after the command, so `$0` cannot say which program it is. Each is now one line.
+  
+  Nothing a consumer types changes: the same six bins, at the same paths, with the
+  same usage strings.
+
+- [#27](https://github.com/abernier/skills/pull/27) [`2092d85`](https://github.com/abernier/skills/commit/2092d85291abb125832daf7b21ce5e2cb6867e0f) Thanks [@abernier](https://github.com/abernier)! - The Playwright wiring becomes an interface: `@abernier/skills/playwright`
+  
+  `tracerbenchConfig()` and `profilerConfig()` build the two configs the benches
+  run under, so the eight environment variables the harness exports — `TB_PORT`,
+  `TB_DIST`, `TB_OUTPUT_DIR`, `TB_COUNTERS`, `PLAYWRIGHT_JSON_OUTPUT_FILE`,
+  `PROFILER_PORT`, `PROFILER_COMMITS`, `PROFILER_SCAN_BUNDLE` — are written down
+  in the package that sets them instead of being rediscovered by each consumer.
+  
+  A consumer passes what only its repo knows: the dev-server `command`, and a
+  `timeout` when two minutes is not enough. Port and base URL derivation,
+  `testDir`, `testMatch`, `workers`, `outputDir`, the `list` + `json` reporter
+  pair, `use.trace`, `webServer.url` / `reuseExistingServer` and the profiler's
+  `globalSetup: "@abernier/skills/profiler-scan"` all move behind it.
+  
+  BREAKING: `@playwright/test` is now a peer dependency, `>=1.49`. The configs are
+  loaded by the consumer's Playwright and must use its copy, so a repo that has
+  none — or an older one — installs or upgrades it. Nothing else about a
+  hand-written config stops working; the builders are there to replace it, not to
+  require replacing it.
+
+- [#27](https://github.com/abernier/skills/pull/27) [`2092d85`](https://github.com/abernier/skills/commit/2092d85291abb125832daf7b21ce5e2cb6867e0f) Thanks [@abernier](https://github.com/abernier)! - `files` lists what ships instead of subtracting three things from `scripts/`.
+  Nine test files used to land in every consumer's `node_modules`, one for every
+  rule this package checks about itself. Eight of them travelled for nothing.
+  
+  BREAKING: the ninth was never a test of this package, and it has an honest name
+  now. `scripts/profiler.compare.test.ts` ended in a block that read your
+  `bench.json`, walked the `sourceRoots` it declares, and gated on whatever
+  first-party component it found — the check that goes red when a source tree
+  moved and the config did not. That block is `scripts/bench.conformance.test.ts`,
+  and `profiler.compare.test.ts` stays here with the rest of the suite.
+  
+  `benchTests()` follows the rename, so a `vitest.config.ts` using the plugin
+  needs no change:
+  
+  ```ts
+  import { benchTests } from "@abernier/skills/bench-tests";
+  
+  export default defineConfig({ plugins: [benchTests()] });
+  ```
+  
+  A config that wired the old path by hand has to move:
+  
+  ```diff
+  -  include: ["node_modules/@abernier/skills/scripts/profiler.compare.test.ts"],
+  +  include: ["node_modules/@abernier/skills/scripts/bench.conformance.test.ts"],
+  ```
+
+- [#27](https://github.com/abernier/skills/pull/27) [`2092d85`](https://github.com/abernier/skills/commit/2092d85291abb125832daf7b21ce5e2cb6867e0f) Thanks [@abernier](https://github.com/abernier)! - New types-only subpath `@abernier/skills/bench-types`, exporting the bench
+  harness's wire contract: `RenderCause`, `RenderRecord`, `CommitRecord` and
+  `PerfIdStats`.
+  
+  Consuming `e2e/profiler.spec.ts` files re-declared these shapes by hand,
+  because a value import of a `.ts` file under `node_modules` dies with
+  "Stripping types is currently unsupported for files under node_modules".
+  `import type` never reaches Node, so a spec can now read the shapes from the
+  package instead of copying them:
+  
+  ```ts
+  import type { CommitRecord, PerfIdStats } from "@abernier/skills/bench-types";
+  ```
+  
+  The recorder that produces them (`profiler.scan.injected.ts`), the aggregator
+  that folds them and the comparer that diffs them all read the same file now, so
+  a drift in the recorder's output has one declaration to break instead of five to
+  fall out of sync.
+
 ## 0.6.1
 
 ### Patch Changes
