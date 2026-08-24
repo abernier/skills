@@ -3,11 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  aggregateCommits,
-  type CommitRecord,
-  type RenderRecord,
-} from "./profiler.aggregate.ts";
+import { aggregateCommits } from "./profiler.aggregate.ts";
+import type { CommitRecord, RenderRecord } from "./bench.types.d.mts";
 
 /**
  * Tiny helper to keep the test bodies free of repetitive scaffolding —

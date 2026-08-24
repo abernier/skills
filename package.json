@@ -22,6 +22,9 @@
       "types": "./scripts/bench.tests.d.mts",
       "default": "./scripts/bench.tests.mjs"
     },
+    "./bench-types": {
+      "types": "./scripts/bench.types.d.mts"
+    },
     "./gestures": {
       "types": "./scripts/gestures.d.mts",
       "default": "./scripts/gestures.mjs"

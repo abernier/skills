@@ -26,31 +26,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-/**
- * Cause classification produced by the bippy recorder. Mirrors the union in
- * `e2e/profiler.scan.injected.ts` exactly — this file is the canonical
- * declaration both the spec and the recorder validate against.
- */
-export type RenderCause =
-  | { kind: "mount" }
-  | { kind: "props"; changed: string[] }
-  | { kind: "state" }
-  | { kind: "context"; names: string[] }
-  | { kind: "parent" }
-  | { kind: "force" };
-
-/** One render entry inside a commit, as captured by the bippy recorder. */
-export type RenderRecord = {
-  name: string;
-  cause: RenderCause;
-  selfTime: number;
-  baseTime: number;
-};
-
-/** One commit from the recorder. */
-export type CommitRecord = {
-  renders: RenderRecord[];
-};
+// The shapes this program folds live in one place, `bench.types.d.mts`, which
+// consuming repos read through `@abernier/skills/bench-types`. `import type`
+// and nothing else: there is no runtime module behind that file.
+import type {
+  CommitRecord,
+  RenderCause,
+  RenderRecord,
+} from "./bench.types.d.mts";
 
 /**
  * Per-component aggregate folded from a step's raw commit log. Compact
