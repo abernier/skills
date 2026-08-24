@@ -265,8 +265,6 @@ Playwright browsers itself.
 | --- | --- | --- |
 | `strict` | `false` | Whether a regression reddens the PR. Strict runs `profiler --strict` and lets both benches fail the job; soft reports in the comment and exits green. |
 | `timeout-minutes` | `30` | Per-bench budget. Each bench builds and runs two sides. |
-| `skip-draft` | `true` | Skip while the PR is a draft. |
-| `artifact-retention-days` | `7` | How long raw traces are kept. |
 | `node-version-file` | `.nvmrc` | Where the Node version is read from. |
 
 `on:`, `paths:` and `concurrency:` cannot move into a called workflow and stay

@@ -38,19 +38,6 @@ on:
           wall-clock ceiling for both halves plus the compare.
         type: number
         default: 30
-      skip-draft:
-        description: >-
-          Skip while the PR is a draft. `ready_for_review` in the caller's
-          `types:` is what lets the transition trigger the run.
-        type: boolean
-        default: true
-      artifact-retention-days:
-        description: >-
-          How long the raw traces and reports are kept. Perf data for a PR head
-          is stale as soon as the branch moves, and the 90-day default only
-          fills the account-wide storage quota.
-        type: number
-        default: 7
       node-version-file:
         description: >-
           The file the Node version is read from. This workflow installs the
@@ -67,7 +54,10 @@ jobs:
     # run it from the same lines. Drift between two hand-copied jobs is the bug
     # this workflow exists to stop, and it is no less a bug inside one file.
     name: ${{ matrix.bench }}
-    if: ${{ !inputs.skip-draft || github.event.pull_request.draft == false }}
+    # A draft is where a branch is still moving, and a bench of a moving branch
+    # measures noise. `ready_for_review` in the caller's `types:` is what lets
+    # the transition trigger the run. Not an input until a repo wants otherwise.
+    if: ${{ github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
 
@@ -177,4 +167,6 @@ jobs:
         with:
           name: ${{ matrix.bench }}-results
           path: ${{ matrix.bench }}-results/
-          retention-days: ${{ inputs.artifact-retention-days }}
+          # Perf data for a PR head is stale as soon as the branch moves, and the
+          # 90-day default only fills the account-wide storage quota.
+          retention-days: 7

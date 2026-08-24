@@ -17,8 +17,8 @@ and it had already happened: the action pins were two major versions apart, and
 one copy still guarded three steps on `github.event_name == 'pull_request'`
 under a trigger that is already pull-request-only.
 
-So the four values are `inputs` — `strict`, `timeout-minutes`, `skip-draft`,
-`artifact-retention-days` — and the caller keeps `on:`, its `paths:` and its
+So the values that actually diverge are `inputs` — `strict`, `timeout-minutes`
+and `node-version-file` — and the caller keeps `on:`, its `paths:` and its
 `concurrency:` group. That last one stays behind on purpose rather than by
 omission: `github.workflow` inside a called workflow resolves to the *caller's*
 workflow name, so a group built from it reads correctly only where the trigger
