@@ -67,275 +67,51 @@ REGRESSED_ROWS=6000
 
 # ── The fixture app ──────────────────────────────────────────────────────────
 #
-# Written from here rather than kept as a directory in the repo, for the same
-# reason `profiler.test.sh` writes its fixture: files that never exist in the
-# checkout are files no `tsc`, no shellcheck and no vitest glob has to be taught
-# to skip, and the subject reads next to the assertions about it.
+# `fixtures/bench.e2e/` — a real React app, on disk, in this repository. It runs
+# on its own (`pnpm --dir fixtures/bench.e2e dev`), which is the point of it
+# being a directory: when a bench misbehaves you can start the app it was
+# measuring and look at it.
 #
-# It is as small as a React app that both benches can drive gets: an entry, a
+# Only the *history* is synthesised here. Every case needs three git histories
+# of the same app, so this suite `git init`s a scratch repo and fabricates
+# commits — but what it commits is the fixture, copied in unchanged.
+#
+# It is as small as a React app both benches can drive gets: an entry, a
 # component tree three deep, a `<React.Profiler>` zone because the profiler's
 # report carries zone totals, and one exported constant that scales the work.
-write_app() {
-  local repo="$1"
-  mkdir -p "$repo/src" "$repo/e2e"
+fixture_dir="$pkg_dir/fixtures/bench.e2e"
 
-  cat > "$repo/index.html" <<'HTML'
-<!doctype html>
-<meta charset="utf-8" />
-<title>bench fixture</title>
-<div id="root"></div>
-<script type="module" src="/src/main.tsx"></script>
-HTML
+# Named rather than a `cp -R` of the whole directory: a standalone run of the
+# fixture leaves a `dist/`, a `node_modules/` and a results directory behind,
+# and none of them belongs in a scratch repo. A fixture file added without a
+# line here fails the very next run, loudly.
+FIXTURE_ENTRIES=(
+  .gitignore
+  index.html
+  package.json
+  tsconfig.json
+  playwright.profiler.config.ts
+  playwright.tracerbench.config.ts
+  e2e
+  src
+)
 
-  # `jsx: react-jsx` is the whole reason this file exists — vite reads it to
-  # pick the automatic JSX runtime, which is what keeps `@vitejs/plugin-react`
-  # out of this package's devDependencies.
-  cat > "$repo/tsconfig.json" <<'JSON'
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "jsx": "react-jsx",
-    "strict": true,
-    "skipLibCheck": true
-  }
-}
-JSON
+copy_app() {
+  local repo="$1" entry
+  for entry in "${FIXTURE_ENTRIES[@]}"; do
+    cp -R "$fixture_dir/$entry" "$repo/$entry" || return 1
+  done
 
-  # The `<React.Profiler>` sink. Every consumer has one under some name — the
-  # profiler's report carries per-zone commit counts and `profiler.compare.ts`
-  # reads `byId` off every step — so the fixture has the smallest honest
-  # version of it.
-  cat > "$repo/src/perf.ts" <<'TS'
-type Bucket = { count: number; actualMs: number; baseMs: number };
-type Stats = { mount: Bucket; update: Bucket };
-
-const byId: Record<string, Stats> = {};
-const empty = (): Bucket => ({ count: 0, actualMs: 0, baseMs: 0 });
-
-export function onRender(
-  id: string,
-  phase: string,
-  actualMs: number,
-  baseMs: number,
-) {
-  const stats = (byId[id] ??= { mount: empty(), update: empty() });
-  const bucket = phase === "mount" ? stats.mount : stats.update;
-  bucket.count += 1;
-  bucket.actualMs += actualMs;
-  bucket.baseMs += baseMs;
-}
-
-// The spec reads this between steps, exactly as a consuming app's profiler
-// wrapper is read.
-(window as unknown as Record<string, unknown>).__perfStats = {
-  reset() {
-    for (const key of Object.keys(byId)) delete byId[key];
-  },
-  snapshot() {
-    return JSON.parse(JSON.stringify(byId));
-  },
-};
-TS
-
-  cat > "$repo/src/App.tsx" <<'TS'
-import { Profiler, useState } from "react";
-
-import { onRender } from "./perf";
-// Absent on the `control-legacy` commit, which is how the "control leg that
-// cannot run" cases below break one side: an import the control cannot
-// resolve, which is how both real consumers hit this in the wild.
-import { ROWS } from "./rows";
-
-function Row({ index, tick }: { index: number; tick: number }) {
-  return <li>{index + tick}</li>;
-}
-
-function List({ tick }: { tick: number }) {
-  return (
-    <ul>
-      {Array.from({ length: ROWS }, (_, index) => (
-        <Row key={index} index={index} tick={tick} />
-      ))}
-    </ul>
-  );
-}
-
-export function App() {
-  const [tick, setTick] = useState(0);
-  return (
-    <Profiler id="app" onRender={onRender}>
-      <main data-testid="app" data-tick={tick}>
-        <button data-testid="tick" onClick={() => setTick((t) => t + 1)}>
-          tick
-        </button>
-        <List tick={tick} />
-      </main>
-    </Profiler>
-  );
-}
-TS
-
-  # No `<StrictMode>`: its dev-only double render would double every count for
-  # no signal, and the fixture wants the smallest deterministic numbers it can
-  # get.
-  cat > "$repo/src/main.tsx" <<'TS'
-import { createRoot } from "react-dom/client";
-
-import { App } from "./App";
-
-createRoot(document.getElementById("root")!).render(<App />);
-TS
-
+  # Set rather than inherited from the checkout: `CONTROL_ROWS` is what every
+  # case below is calibrated against, and the committed value of `src/rows.ts`
+  # is only what a standalone `pnpm --dir fixtures/bench.e2e dev` renders.
   set_rows "$repo" "$CONTROL_ROWS"
 
-  # ── The two specs ──────────────────────────────────────────────────────────
-  #
-  # Near-empty on purpose, and the same scenario on both sides: mount, then
-  # click. Everything expensive is the app's doing.
-  cat > "$repo/e2e/tracerbench.spec.ts" <<'TS'
-import { expect, test } from "@playwright/test";
-
-test("mount and tick", async ({ page }) => {
-  await test.step("mount", async () => {
-    await page.goto("/");
-    await expect(page.getByTestId("app")).toBeVisible();
-  });
-
-  await test.step("tick", async () => {
-    for (let i = 1; i <= 5; i++) {
-      await page.getByTestId("tick").click();
-      await expect(page.getByTestId("app")).toHaveAttribute(
-        "data-tick",
-        String(i),
-      );
-    }
-  });
-});
-TS
-
-  # The commit log is written last, so a step that never happened leaves no
-  # file — which is exactly how a leg ends up with no report.
-  cat > "$repo/e2e/profiler.spec.ts" <<'TS'
-import * as fs from "node:fs";
-import * as path from "node:path";
-
-import { expect, test } from "@playwright/test";
-import { SCAN_BUNDLE_PATH } from "@abernier/skills/profiler-scan";
-import type { CommitRecord, PerfIdStats } from "@abernier/skills/bench-types";
-
-declare global {
-  interface Window {
-    __perfStats?: { reset(): void; snapshot(): Record<string, PerfIdStats> };
-    __renderScan__?: { reset(): void; snapshot(): CommitRecord[] };
-  }
-}
-
-const COMMITS =
-  process.env.PROFILER_COMMITS ??
-  path.resolve(process.cwd(), "profiler-results", "commits.json");
-
-test("mount and tick", async ({ page }) => {
-  // Before the first navigation: the recorder patches React's devtools hook,
-  // and a patch that lands after React boots records nothing.
-  await page.addInitScript({ path: SCAN_BUNDLE_PATH });
-
-  const steps: unknown[] = [];
-
-  const record = async (step: string, run: () => Promise<void>) => {
-    const startedAt = Date.now();
-    await run();
-    const { byId, commits } = await page.evaluate(() => ({
-      byId: window.__perfStats?.snapshot() ?? {},
-      commits: window.__renderScan__?.snapshot() ?? [],
-    }));
-    steps.push({
-      step,
-      durationMs: Date.now() - startedAt,
-      totalCommits: Object.values(byId).reduce(
-        (n, s) => n + s.mount.count + s.update.count,
-        0,
-      ),
-      byId,
-      commits,
-    });
-    await page.evaluate(() => {
-      window.__perfStats?.reset();
-      window.__renderScan__?.reset();
-    });
-  };
-
-  await record("mount", async () => {
-    await page.goto("/");
-    await expect(page.getByTestId("app")).toBeVisible();
-  });
-
-  await record("tick", async () => {
-    for (let i = 1; i <= 5; i++) {
-      await page.getByTestId("tick").click();
-      await expect(page.getByTestId("app")).toHaveAttribute(
-        "data-tick",
-        String(i),
-      );
-    }
-  });
-
-  fs.mkdirSync(path.dirname(COMMITS), { recursive: true });
-  fs.writeFileSync(
-    COMMITS,
-    JSON.stringify({
-      schemaVersion: 2,
-      generatedAt: new Date().toISOString(),
-      url: page.url(),
-      steps,
-    }),
-  );
-});
-TS
-
-  # The configs a consumer writes, verbatim from the docs on
-  # `bench.playwright.mjs` — the point being that this suite exercises the
-  # documented path and not a private one. Short budgets: every failure mode
-  # this suite provokes is a hang otherwise.
-  cat > "$repo/playwright.tracerbench.config.ts" <<'TS'
-import { tracerbenchConfig } from "@abernier/skills/playwright";
-
-export default tracerbenchConfig({
-  command: ({ previewArgs }) => `pnpm exec vite preview ${previewArgs}`,
-  timeout: 60_000,
-  webServer: { timeout: 60_000 },
-});
-TS
-
-  cat > "$repo/playwright.profiler.config.ts" <<'TS'
-import { profilerConfig } from "@abernier/skills/playwright";
-
-export default profilerConfig({
-  command: ({ port }) => `pnpm exec vite --port ${port} --strictPort`,
-  timeout: 60_000,
-  webServer: { timeout: 60_000 },
-});
-TS
-
-  cat > "$repo/package.json" <<'JSON'
-{
-  "name": "bench-e2e-fixture",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "vite build",
-    "test:tracerbench": "playwright test --config playwright.tracerbench.config.ts",
-    "test:profiler": "playwright test --config playwright.profiler.config.ts"
-  }
-}
-JSON
-
   # Same lockfile on both sides, so a control worktree symlinks `node_modules`
-  # instead of installing into it.
+  # instead of installing into it. A property of the scratch repo rather than of
+  # the fixture — `installable_control` below is the one case that breaks it on
+  # purpose.
   : > "$repo/pnpm-lock.yaml"
-  printf 'node_modules\ndist\ndist-*\nprofiler-results\ntracerbench-results\ntest-results\n' \
-    > "$repo/.gitignore"
 }
 
 # The one knob. Both benches read the same number: more rows is more fiber
@@ -375,7 +151,7 @@ make_repo() {
   local repo="$1"
   mkdir -p "$repo"
   link_node_modules "$repo"
-  write_app "$repo"
+  copy_app "$repo"
 
   git -C "$repo" init -q -b main
   git -C "$repo" config user.email fixture@example.com
