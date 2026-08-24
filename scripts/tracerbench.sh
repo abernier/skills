@@ -69,9 +69,10 @@ fi
 cd "$ROOT_DIR"
 
 RESULTS_DIR="$ROOT_DIR/tracerbench-results"
-# One source of truth: the `TB_PORT` lines below bind these, and the exit trap
-# frees them. Experiment takes the odd port one above control, so a leftover
-# server from the other side can never be silently reused.
+# One source of truth: the `TB_PORT` lines below bind these; each is swept
+# immediately before the leg that binds it, and the exit trap sweeps both.
+# Experiment takes the odd port one above control, so a leftover server from the
+# other side can never be silently reused.
 CONTROL_PORT=4200
 EXPERIMENT_PORT=4201
 
@@ -231,9 +232,25 @@ echo ""
 #
 # The status itself does not gate: a spec can fail one assertion and still have
 # timed every mark, and voiding a real measurement over that would be a
-# different bug. What gates is the report — a missing one takes the comparer
-# down and, under `set -e`, this script with it, so a run that measured one side
-# can never read as a pass.
+# different bug. What gates is what the leg measured — a leg that timed no mark
+# at all never ran, and `tracerbench.compare.ts` refuses to call a comparison
+# over nothing a pass. That refusal, not this line, is the guard.
+#
+# ── A leg starts against a free port ─────────────────────────────────────────
+#
+# Playwright starts its web server `detached` and `vite preview` binds
+# `--strictPort`, so a server outlives the leg that started it whenever
+# Playwright's teardown loses the race — and until now the ports only came down
+# in the exit trap, after the comparison. The next leg, or the next run, then
+# met a port something else still held, vite refused to bind, and the leg
+# produced a report with no marks in it. Intermittent by nature: one run in two,
+# measured on `tilt`.
+#
+# So the port each leg is about to bind is freed immediately before it binds,
+# rather than long after the run that took it is done with it. The teardown
+# still frees both — this is the same sweep, moved to where the collision
+# happens.
+kill_bench_ports "$EXPERIMENT_PORT"
 echo "⏳ Benchmarking experiment…"
 EXPERIMENT_LEG=0
 (
@@ -249,6 +266,9 @@ EXPERIMENT_LEG=0
 echo ""
 
 # ── 4. Benchmark control ────────────────────────────────────────────────────
+# Same sweep, same reason — and this is the one that was observed failing: the
+# error read `http://localhost:4200 is already used`.
+kill_bench_ports "$CONTROL_PORT"
 echo "⏳ Benchmarking control…"
 CONTROL_LEG=0
 (
@@ -288,8 +308,14 @@ if [[ -n "$FRAMES_THRESHOLD" ]]; then
 fi
 
 echo "⏳ Comparing results…"
+# `|| STATUS=$?`, not a bare call, and for the reason `profiler.sh` gives: the
+# comparer exits non-zero on a regression and on a run with nothing to compare,
+# and `set -e` would take this script down with it — before the footer that
+# names the commit the numbers belong to, on exactly the runs where someone will
+# want it. The verdict is carried to the exit line instead.
+STATUS=0
 "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/tracerbench.compare.ts" \
-  "${COMPARE_ARGS[@]}"
+  "${COMPARE_ARGS[@]}" || STATUS=$?
 
 emit_comment_footer "$RESULTS_DIR/comment.md" "$ROOT_DIR" "$REPRO"
 
@@ -297,3 +323,5 @@ echo ""
 if [[ -f "$RESULTS_DIR/comment.md" ]]; then
   echo "📄 $RESULTS_DIR/comment.md"
 fi
+
+exit $STATUS

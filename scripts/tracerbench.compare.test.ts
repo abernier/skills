@@ -90,6 +90,30 @@ function writeSide(
   return reportPath;
 }
 
+/**
+ * The report Playwright's JSON reporter writes when its `webServer` never
+ * starts: no suite ran, one error saying why. A perfectly valid file, and not
+ * a measurement — which is the whole of the bug the guard below covers.
+ */
+function writeUnrunSide(side: string) {
+  const sideDir = path.join(dir, side);
+  fs.mkdirSync(sideDir, { recursive: true });
+  const reportPath = path.join(sideDir, "report.json");
+  fs.writeFileSync(
+    reportPath,
+    JSON.stringify({
+      suites: [],
+      errors: [
+        {
+          message:
+            "Error: http://localhost:4200 is already used, make sure that nothing is running on the port/url",
+        },
+      ],
+    }),
+  );
+  return reportPath;
+}
+
 /** Exit code and stdout — both are surfaces CI reads. */
 function run(control: string, experiment: string, ...flags: string[]) {
   const argv = [
@@ -240,5 +264,92 @@ describe("frames declared while ms is absent", () => {
     expect(status).toBe(0);
     expect(stdout).toContain("frames 0.0% is within threshold of +10% frames");
     expect(stdout).toContain("ms +400.0% ungated");
+  });
+});
+
+describe("nothing to compare", () => {
+  it("a leg that never ran is not a pass", () => {
+    // The run this was found on: the control leg's web server never started,
+    // the JSON reporter wrote its report anyway, and the comparison over the
+    // empty intersection read `0ms` against `0ms` — `+0.0%`, inside any width.
+    const control = writeUnrunSide("control");
+    const experiment = writeSide("experiment", { steady: 1000, other: 500 });
+
+    const { status, stdout } = run(control, experiment, "--threshold", "25");
+
+    expect(status).toBe(1);
+    expect(stdout).toContain("nothing was compared");
+    expect(stdout).toContain("the control leg timed no marks at all");
+    expect(commentMd()).toContain("**NO DATA**");
+    expect(commentMd()).not.toContain("**PASS**");
+  });
+
+  it("and is not a pass with no width declared either", () => {
+    // An absent width says "do not judge my numbers". It never said "do not
+    // tell me the bench did not run".
+    const control = writeUnrunSide("control");
+    const experiment = writeSide("experiment", { steady: 1000 });
+
+    const { status } = run(control, experiment);
+
+    expect(status).toBe(1);
+    expect(commentMd()).toContain("**NO DATA**");
+    expect(commentMd()).not.toContain("**NO GATE**");
+  });
+
+  it("a report that was never written at all is the same fact", () => {
+    const experiment = writeSide("experiment", { steady: 1000 });
+
+    const { status } = run(
+      path.join(dir, "control", "report.json"),
+      experiment,
+      "--threshold",
+      "25",
+    );
+
+    expect(status).toBe(1);
+    expect(commentMd()).toContain("**NO DATA**");
+  });
+
+  it("a leg that died partway is the same fact, though its report is not empty", () => {
+    // The second reproduction, in another repo: `0 compared, 12 only on
+    // experiment, 1 only on control`. The control side is not empty, so a
+    // test on the report's emptiness reads it as a healthy side. The
+    // intersection is empty, and that is what is gated.
+    const control = writeSide("control", { boot: 400 });
+    const experiment = writeSide("experiment", { mount: 1000, tick: 500 });
+
+    const { status, stdout } = run(control, experiment, "--threshold", "25");
+
+    expect(status).toBe(1);
+    expect(stdout).toContain("no mark in common");
+    expect(commentMd()).toContain("**NO DATA**");
+  });
+
+  it("but a mark missing from one side still compares the rest", () => {
+    // The line the guard must not cross. A side that ran and had nothing to
+    // say about one mark is drift — reported, excluded, and still a
+    // comparison of everything else.
+    const control = writeSide("control", { steady: 1000 });
+    const experiment = writeSide("experiment", { steady: 1100, added: 400 });
+
+    const { status, stdout } = run(control, experiment, "--threshold", "25");
+
+    expect(status).toBe(0);
+    expect(stdout).toContain("1 compared, 1 only on experiment");
+    expect(commentMd()).toContain("**PASS**");
+  });
+
+  it("every shared mark bailing is not a comparison either", () => {
+    // One bailed mark is a documented case; every mark bailing leaves the
+    // gated total summing nothing at all.
+    const control = writeSide("control", { guarded: 1000 }, ["guarded"]);
+    const experiment = writeSide("experiment", { guarded: 20 }, []);
+
+    const { status, stdout } = run(control, experiment, "--threshold", "25");
+
+    expect(status).toBe(1);
+    expect(stdout).toContain("every shared mark bailed on one side");
+    expect(commentMd()).toContain("**NO DATA**");
   });
 });
