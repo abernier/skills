@@ -30,26 +30,35 @@ cd "$ROOT_DIR" || exit 1
 # shellcheck source=./_bench-config.sh
 source "$SCRIPT_DIR/_bench-config.sh"
 
-# Local thresholds run about twice as tight as CI's, on the grounds that a quiet
-# machine deserves a stricter bar — hence a second pair of widths rather than
-# the `thresholds.tracerbench*` the benches gate CI with. The defaults are half
-# of the benches' own: `--threshold 20` for tracerbench, `--component-threshold
-# 30` for the profiler.
+# A quiet machine deserves a stricter bar than CI's, so the local run gets its
+# own pair of widths — `thresholds.localTracerbench*` — rather than the
+# `thresholds.tracerbench*` the benches gate CI with.
 #
-# Frames is passed only when the config names it. Left out, `tracerbench.sh`
-# keeps whatever `thresholds.tracerbenchFrames` gives it, which is the one
-# repo-neutral way to say "tighten wall clock and leave frames alone".
-LOCAL_MS="$(bench_config thresholds.localTracerbenchMs 10)"
+# Neither has a default. A width is one repo's calibration on one machine, and
+# there is no number this harness could invent that is right for a repo it has
+# never measured. Absent, the flag is simply not passed, and `tracerbench.sh`
+# keeps whatever `thresholds.tracerbench*` gives it — the repo-neutral way to
+# say "tighten wall clock and leave frames alone", or to say nothing at all.
+LOCAL_MS="$(bench_config thresholds.localTracerbenchMs "")"
 LOCAL_FRAMES="$(bench_config thresholds.localTracerbenchFrames "")"
 
-TRACERBENCH_ARGS=(--threshold "$LOCAL_MS")
+TRACERBENCH_ARGS=()
+if [[ -n "$LOCAL_MS" ]]; then
+  TRACERBENCH_ARGS+=(--threshold "$LOCAL_MS")
+fi
 if [[ -n "$LOCAL_FRAMES" ]]; then
   TRACERBENCH_ARGS+=(--frames-threshold "$LOCAL_FRAMES")
 fi
 
-bash "$SCRIPT_DIR/tracerbench.sh" "${TRACERBENCH_ARGS[@]}" "$@"
+# `${a[@]+"${a[@]}"}` rather than a bare `"${a[@]}"`: under `set -u` bash 3.2 —
+# still the system bash on macOS — calls an empty array unbound and dies.
+bash "$SCRIPT_DIR/tracerbench.sh" ${TRACERBENCH_ARGS[@]+"${TRACERBENCH_ARGS[@]}"} "$@"
 tracerbench=$?
 
+# The profiler's component width is not configurable and does not come from a
+# halving: 20 is the value both founding repos calibrated to, carried over as
+# it stood. Its bench defaults to 30, which this deliberately tightens — it is
+# a third tighter, not half.
 bash "$SCRIPT_DIR/profiler.sh" --strict --component-threshold 20 "$@"
 profiler=$?
 
