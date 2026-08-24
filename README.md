@@ -158,6 +158,56 @@ its state, or build its scene — stay in your repo and travel by
 { "controlWorktreeCopy": ["e2e/gestures.ts"] }
 ```
 
+#### The render-cause recorder
+
+The profiler's gate comes from a bippy recorder injected before React boots.
+Recorder and the `globalSetup` that bundles it both ship here — point your
+profiler config at the package and delete your local copies:
+
+```ts
+// playwright.profiler.config.ts
+export default defineConfig({
+  globalSetup: "@abernier/skills/profiler-scan",
+});
+```
+
+```ts
+// e2e/profiler.spec.ts
+import { SCAN_BUNDLE_PATH } from "@abernier/skills/profiler-scan";
+
+await page.addInitScript({ path: SCAN_BUNDLE_PATH });
+```
+
+`bippy` (`^0.5.39`) and `esbuild` have to be yours: the bundle is built from
+your `node_modules` on every run, so the recorder never drifts from the lib your
+repo installed. The control worktree needs neither — it receives the IIFE.
+
+The bundle lands at `profiler-results/scan-bundle.js`. `$PROFILER_SCAN_BUNDLE`
+names a different file and hands the run to you: when it points at a file that
+already exists, `globalSetup` builds nothing and trusts what is there. That is
+how `profiler` gives the experiment and the control one byte-identical
+recorder, and it is also how you swap in a recorder of your own — build it, set
+the variable, and both sides get yours.
+
+<details>
+<summary>Why one file ships as <code>.mjs</code> and its neighbour stays <code>.ts</code></summary>
+
+Playwright loads `globalSetup` as a module, from inside `node_modules`. Node
+strips types in first-party files only, so a `.ts` there throws
+`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, and Playwright does not transform
+`node_modules` either — hence `.mjs`, with types beside it.
+
+The recorder is never imported by anything. esbuild reads it as an entry point
+and transpiles it itself, so it stays `.ts` and keeps its types.
+
+Both resolve their dependencies from the repo being measured, not from this
+package: `esbuild` through a `require` rooted at your `package.json`, `bippy`
+through esbuild's `nodePaths`. Under pnpm this package's real path is a store
+directory whose siblings are its own dependencies, and a plain walk up from
+there would miss yours.
+
+</details>
+
 #### What the profiler spec writes
 
 The profiler runs in three moves — your spec records, `profiler-aggregate.ts`

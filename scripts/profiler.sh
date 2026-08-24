@@ -6,7 +6,8 @@ set -euo pipefail
 # on a control branch (default: main), then diffs:
 #
 #   - per-component fiber renders + cause classification (the gate), captured
-#     by a runtime-injected bippy recorder — see `e2e/profiler-scan.injected.ts`
+#     by a runtime-injected bippy recorder — this package's
+#     `profiler-scan.injected.ts`, bundled by its `profiler-scan.setup.mjs`
 #   - coarse <React.Profiler> zone commit counts (advisory only)
 #
 # The spec writes one file per side: its raw commit log, at
@@ -189,11 +190,19 @@ mkdir -p "$RESULTS_DIR/control" "$RESULTS_DIR/experiment"
 # Built once on the experiment side (which has bippy + esbuild as dev deps),
 # then handed verbatim to both runs via $PROFILER_SCAN_BUNDLE. The control
 # branch never resolves bippy/esbuild — it just executes the IIFE.
+#
+# The recorder is this package's (`$SCRIPT_DIR`), the `bippy` it inlines is the
+# measured repo's (`$ROOT_DIR`). esbuild resolves imports by walking up from the
+# entry point, which under pnpm is a store directory whose siblings are this
+# package's own deps — `NODE_PATH` is the extra place it looks, and it is what
+# puts the measured repo's `bippy` in the bundle. `profiler-scan.setup.mjs`
+# passes the same directory as `nodePaths` when it builds the bundle itself.
 SCAN_BUNDLE="$RESULTS_DIR/scan-bundle.js"
 echo "⏳ Building scan bundle…"
 (
   cd "$ROOT_DIR"
-  pnpm exec esbuild "$ROOT_DIR/e2e/profiler-scan.injected.ts" \
+  NODE_PATH="$ROOT_DIR/node_modules" \
+  pnpm exec esbuild "$SCRIPT_DIR/profiler-scan.injected.ts" \
     --bundle --format=iife --target=es2020 --platform=browser \
     --keep-names --outfile="$SCAN_BUNDLE" --log-level=warning
 )
@@ -251,23 +260,22 @@ echo ""
 # scenario. This matters both when the control predates the spec entirely
 # (no tests found) and when the spec is updated on the experiment branch
 # (stale spec would compare different interactions, making the diff meaningless).
-# `profiler-scan.setup.ts` is also copied because Playwright's `globalSetup`
-# resolves it relative to the worktree's config — but at runtime it sees the
-# pre-built `$SCAN_BUNDLE` and short-circuits without touching esbuild/bippy.
-# `profiler-scan.injected.ts` is deliberately *not* copied: that pre-built
-# bundle is exactly what replaces it.
+# The `globalSetup` those configs name is `@abernier/skills/profiler-scan`,
+# which the worktree resolves through the `node_modules` it was just given — so
+# nothing about it is copied. It short-circuits anyway: it sees the pre-built
+# `$SCAN_BUNDLE` and returns without touching esbuild or bippy, which the
+# control branch may not have at all.
 mkdir -p "$WORKTREE_DIR/e2e"
 cp "$ROOT_DIR/e2e/profiler.spec.ts" "$WORKTREE_DIR/e2e/profiler.spec.ts"
-cp "$ROOT_DIR/e2e/profiler-scan.setup.ts" "$WORKTREE_DIR/e2e/profiler-scan.setup.ts"
 cp "$ROOT_DIR/playwright.profiler.config.ts" "$WORKTREE_DIR/playwright.profiler.config.ts"
 # Whatever else this repo's spec reaches for, on top of that core. Same reason
 # every time: the control branch may predate the module, so the working tree's
-# copy has to travel with the spec. The gesture helpers used to be copied here
-# unconditionally, as the one file both consumers had; they now come from
-# `@abernier/skills/gestures`, which the worktree resolves through the
-# `node_modules` it was just given — the same one its `playwright` binary comes
-# from. A repo keeping app-specific gestures of its own declares that file here
-# like any other.
+# copy has to travel with the spec. The gesture helpers and the scan setup used
+# to be copied here unconditionally, as the files every consumer had; they now
+# come from `@abernier/skills/gestures` and `@abernier/skills/profiler-scan`,
+# which the worktree resolves the same way its `playwright` binary does. A repo
+# keeping gestures or a recorder of its own declares that file here like any
+# other.
 while IFS= read -r rel; do
   mkdir -p "$WORKTREE_DIR/$(dirname "$rel")"
   cp "$ROOT_DIR/$rel" "$WORKTREE_DIR/$rel"
