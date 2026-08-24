@@ -67,9 +67,10 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
     "types:emit": "tsc -p tsconfig.build.json",
     "types:check": "rm -rf node_modules/.cache/skills-dts && tsc -p tsconfig.build.json --outDir node_modules/.cache/skills-dts && for f in node_modules/.cache/skills-dts/scripts/*.d.mts; do diff -u \"scripts/${f##*/}\" \"$f\" || exit 1; done",
-    "lint": "shellcheck --severity=warning scripts/branchstat.sh scripts/branchstat.test.sh scripts/release-tag.sh scripts/bench.common.sh scripts/bench.common.test.sh scripts/bench.config.sh scripts/bench.config.test.sh scripts/bench.launch.sh scripts/bench.lgtm.sh scripts/profiler.sh scripts/profiler.test.sh scripts/profiler.aggregate.sh scripts/profiler.compare.sh scripts/tracerbench.sh scripts/tracerbench.compare.sh",
+    "lint": "shellcheck --severity=warning scripts/branchstat.sh scripts/branchstat.test.sh scripts/release-tag.sh scripts/bench.common.sh scripts/bench.common.test.sh scripts/bench.config.sh scripts/bench.config.test.sh scripts/bench.launch.sh scripts/bench.lgtm.sh scripts/profiler.sh scripts/profiler.test.sh scripts/bench.e2e.test.sh scripts/LGTM.sh scripts/profiler.aggregate.sh scripts/profiler.compare.sh scripts/tracerbench.sh scripts/tracerbench.compare.sh",
     "test": "bash scripts/branchstat.test.sh && bash scripts/bench.common.test.sh && bash scripts/bench.config.test.sh && bash scripts/profiler.test.sh && vitest run",
-    "lgtm": "pnpm run typecheck && pnpm run types:check && pnpm run lint && pnpm run test && echo 'LGTM!'"
+    "lgtm": "pnpm run typecheck && pnpm run types:check && pnpm run lint && pnpm run test && echo 'LGTM!'",
+    "LGTM": "bash scripts/LGTM.sh"
   },
   "peerDependencies": {
     "@playwright/test": ">=1.49"
@@ -81,8 +82,11 @@
     "@types/node": "^26.2.0",
     "bippy": "^0.5.43",
     "esbuild": "^0.28.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
+    "vite": "^8.2.2",
     "vitest": "^4.1.11"
   },
   "pnpm": {
