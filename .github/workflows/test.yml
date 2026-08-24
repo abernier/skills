@@ -14,9 +14,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lgtm:
+  # The uppercase gate, not the lowercase one: `pnpm run LGTM` is `pnpm run
+  # lgtm` plus the end-to-end bench suite, and dev↔CI parity is about the two
+  # running the same command. The slow half is the only coverage the harness has
+  # of itself against a real browser, so CI is precisely where it must not be
+  # skipped.
+  LGTM:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v5
@@ -37,8 +42,9 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       # The same command as locally, so a green branch here is a green branch
-      # there: typecheck, shellcheck, then the suite.
-      - run: pnpm run lgtm
+      # there: typecheck, shellcheck, the fast suite, then both benches driven
+      # end to end against the fixture app.
+      - run: pnpm run LGTM
 
   # Dogfood: the plugin's own PRs get the report its callers get, so the
   # reusable workflow is exercised by the repo that ships it — and the ref it
