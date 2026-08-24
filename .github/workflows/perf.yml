@@ -1,0 +1,172 @@
+name: Perf
+
+# Reusable. A repo that wants the two benches on its PRs calls this workflow
+# instead of copying 170 lines of YAML — the plugin owns the pipeline in CI the
+# same way it owns `tracerbench` and `profiler` on the command line:
+#
+#   jobs:
+#     perf:
+#       uses: abernier/skills/.github/workflows/perf.yml@v0.6.0
+#       permissions:
+#         contents: read
+#         pull-requests: write
+#
+# What the caller keeps is what a called workflow cannot own: `on:`, its
+# `paths:` filter, and `concurrency:`. The first two are repo-specific by
+# definition — which files, in which layout, are worth a bench run. The third is
+# left behind on purpose: `github.workflow` inside a called workflow resolves to
+# the *caller's* workflow name, so a concurrency group built from it belongs
+# where it reads correctly, next to the trigger it cancels.
+#
+# PR-only, like the benches themselves: each run rebuilds and re-benchmarks the
+# base branch as its own control, so a push to the default branch would compare
+# main against itself. The sticky PR comment is the deliverable.
+on:
+  workflow_call:
+    inputs:
+      strict:
+        description: >-
+          Whether a regression is allowed to redden the PR. Soft by default: a
+          perf number measured on a shared runner is noisy, and the comment says
+          more than a red cross. Strict runs the profiler with `--strict` and
+          lets both benches fail the job.
+        type: boolean
+        default: false
+      timeout-minutes:
+        description: >-
+          Per-bench budget. Each bench builds and runs two sides, so this is the
+          wall-clock ceiling for both halves plus the compare.
+        type: number
+        default: 30
+      node-version-file:
+        description: >-
+          The file the Node version is read from. This workflow installs the
+          toolchain itself rather than calling a composite action in the caller
+          — a relative `uses: ./…` inside a called workflow resolves against
+          whatever is checked out in the workspace, which is the caller's repo —
+          so this path is the one thing it has to be told.
+        type: string
+        default: .nvmrc
+
+jobs:
+  bench:
+    # Both benches run the same pipeline over a different measurement, so they
+    # run it from the same lines. Drift between two hand-copied jobs is the bug
+    # this workflow exists to stop, and it is no less a bug inside one file.
+    name: ${{ matrix.bench }}
+    # A draft is where a branch is still moving, and a bench of a moving branch
+    # measures noise. `ready_for_review` in the caller's `types:` is what lets
+    # the transition trigger the run. Not an input until a repo wants otherwise.
+    if: ${{ github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    strategy:
+      # One bench regressing says nothing about the other. Cancelling the second
+      # would throw away the half of the report that was still going to be true.
+      fail-fast: false
+      matrix:
+        include:
+          - bench: tracerbench
+            heading: "## 📊 TracerBench"
+            # `tracerbench` has no `--strict`: what gates it is the threshold
+            # width in `bench.json`, and an absent width gates nothing.
+            args: ""
+          - bench: profiler
+            heading: "## 🧪 Profiler"
+            args: ${{ inputs.strict && '--strict' || '' }}
+
+    steps:
+      # The caller's repo, at the workspace root: the benches run its scripts,
+      # read its lockfile and build its app. `fetch-depth: 0` because both
+      # benches build the control branch from a `git worktree`, so the base ref
+      # has to be in the clone.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ${{ inputs.node-version-file }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Playwright browsers, cached by the *Playwright version* rather than the
+      # whole lockfile: the binaries only change across Playwright releases, so
+      # keying on `pnpm-lock.yaml` busts the cache on every unrelated dependency
+      # change and forces a needless re-download.
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(pnpm exec playwright --version | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Install Playwright OS deps
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      # `job_workflow_sha` is the commit this very workflow file was read from —
+      # the ref the caller pinned, resolved. So the workflow and the script it
+      # runs are never two versions of each other, whatever the caller pinned.
+      # It lands in a dot-directory, after `pnpm install`, so it is invisible to
+      # the caller's workspace globs and to the install that already ran.
+      - name: Check out the plugin the stale-marker lives in
+        uses: actions/checkout@v7
+        with:
+          repository: abernier/skills
+          ref: ${{ github.job_workflow_sha }}
+          path: .perf-plugin
+
+      # A bench runs for tens of minutes. Without this the PR shows last run's
+      # numbers, unlabelled, for the whole of it — and they read as this commit's.
+      - name: Mark existing sticky comment as stale
+        uses: actions/github-script@v9
+        env:
+          COMMENT_HEADER: ${{ matrix.bench }}
+        with:
+          script: |
+            const markStale = require(
+              `${process.env.GITHUB_WORKSPACE}/.perf-plugin/.github/scripts/mark-bench-comment-stale.cjs`,
+            );
+            await markStale({ github, context });
+
+      - name: Run ${{ matrix.bench }}
+        continue-on-error: ${{ !inputs.strict }}
+        run: pnpm exec ${{ matrix.bench }} ${{ matrix.args }}
+
+      # A bench that died before writing its comment still owes the PR an
+      # answer, and "no data" is one.
+      - name: Ensure comment file exists
+        if: always()
+        run: |
+          if [ ! -f ${{ matrix.bench }}-results/comment.md ]; then
+            mkdir -p ${{ matrix.bench }}-results
+            echo -e "${{ matrix.heading }}\n\n⚠️ Comparison data unavailable (one or both runs failed)." > ${{ matrix.bench }}-results/comment.md
+          fi
+
+      - name: Post or update PR comment
+        if: always()
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: ${{ matrix.bench }}
+          path: ${{ matrix.bench }}-results/comment.md
+
+      - name: Upload ${{ matrix.bench }} results
+        # Best-effort: the sticky comment is the deliverable; a full artifact
+        # quota must not redden a green benchmark.
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.bench }}-results
+          path: ${{ matrix.bench }}-results/
+          # Perf data for a PR head is stale as soon as the branch moves, and the
+          # 90-day default only fills the account-wide storage quota.
+          retention-days: 7
