@@ -6,10 +6,16 @@ name: Perf
 #
 #   jobs:
 #     perf:
-#       uses: abernier/skills/.github/workflows/perf.yml@v0.7.0
+#       uses: abernier/skills/.github/workflows/perf.yml@vX.Y.Z
 #       permissions:
 #         contents: read
 #         pull-requests: write
+#
+# Pin the release you want. The version is spelled `vX.Y.Z` here rather than a
+# real tag because a release commit cannot rewrite it: pushing a change to a
+# workflow file needs a `workflows` scope the Actions token does not have, so a
+# concrete version here would either go stale or break every release. The
+# README's install line names the current one, and it *is* rewritten.
 #
 # What the caller keeps is what a called workflow cannot own: `on:`, its
 # `paths:` filter, and `concurrency:`. The first two are repo-specific by

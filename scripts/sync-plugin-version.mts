@@ -7,10 +7,10 @@
  *  - `.claude-plugin/plugin.json` — what Claude Code installs. A release where
  *    the two manifests disagree ships a plugin whose stated version is not the
  *    tag it came from.
- *  - `README.md`, `.github/workflows/perf.yml` — the tags a consumer copies.
- *    A stale `pnpm add -D github:abernier/skills#v0.4.2` installs a package
- *    three minors old, and the subpath the surrounding paragraph documents may
- *    not exist in it. That is not a typo in the docs, it is a broken install.
+ *  - `README.md` — the tags a consumer copies. A stale
+ *    `pnpm add -D github:abernier/skills#v0.4.2` installs a package three
+ *    minors old, and the subpath the surrounding paragraph documents may not
+ *    exist in it. That is not a typo in the docs, it is a broken install.
  *
  * So the pins are rewritten from `package.json` at `changeset:version` time,
  * in the same commit that moves the version. Nothing here is hand-maintained,
@@ -26,7 +26,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const PLUGIN = ".claude-plugin/plugin.json";
 /** Files whose `abernier/skills` pins state the current release. */
-const PINNED = ["README.md", ".github/workflows/perf.yml"];
+const PINNED = ["README.md"];
 
 const { version } = JSON.parse(readFileSync("package.json", "utf8")) as {
   version: string;
