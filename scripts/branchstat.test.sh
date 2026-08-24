@@ -471,6 +471,47 @@ if command -v cloc > /dev/null; then
   [ "$chain" = "1" ] && [ "$links" = "0" ] &&
     pass "md: a chain of one-child groups collapses onto its last link" ||
     fail "md: a chain of one-child groups collapses onto its last link — got $chain headers, $links links"
+
+  # An inherited GIT_DIR wins over the cwd, and over `git -C` too, so every git
+  # call in the script would answer about the repository it names instead of the
+  # one the caller stands in. A git hook exports it, which is exactly how a local
+  # /branchstat run gets one. Nothing fails when it happens: the base is resolved
+  # in the wrong repository, and the report describes a branch nobody has, with
+  # confidence.
+  #
+  # Two repos with nothing in common, so the wrong answer cannot look like the
+  # right one: `main~1` here is an empty commit, while over there it holds a file
+  # this repo has never seen. Unscrubbed, that file is reported as a deletion and
+  # the total climbs to 2 files / 37 lines.
+  hooked="$(mktemp -d)"
+  elsewhere="$(mktemp -d)"
+  (
+    cd "$hooked" || exit 1
+    git init -q . && git branch -M main
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+    for i in $(seq 30); do printf 'export const h%s = %s\n' "$i" "$i"; done > Hooked.ts
+    git add -A && git -c user.email=t@t -c user.name=t commit -q -m work
+  )
+  (
+    cd "$elsewhere" || exit 1
+    git init -q . && git branch -M main
+    for i in $(seq 7); do printf 'export const e%s = %s\n' "$i" "$i"; done > Elsewhere.ts
+    git add -A && git -c user.email=t@t -c user.name=t commit -q -m base
+    printf 'export const m = 1\n' > More.ts
+    git add -A && git -c user.email=t@t -c user.name=t commit -q -m more
+  )
+  # Set on the command alone, so it reaches this run and nothing after it: a
+  # GIT_DIR that outlived this case would send every case below at the wrong
+  # repository too, whether or not this one passed.
+  hookout="$(cd "$hooked" && GIT_DIR="$elsewhere/.git" bash "$script" main~1)"
+  rm -rf "$hooked" "$elsewhere"
+  has "Hooked.ts" "$hookout" "GIT_DIR: reports the repo the caller stands in"
+  has "1 file changed, 30 insertions(+) · as GitHub counts it" "$hookout" \
+    "GIT_DIR: the base is resolved in that repo, not the one GIT_DIR names"
+  case "$hookout" in
+    *'Elsewhere.ts'*) fail "GIT_DIR: reported a file only the GIT_DIR repo has" ;;
+    *) pass "GIT_DIR: an inherited GIT_DIR cannot redirect the report" ;;
+  esac
 else
   echo "  (cloc absent — renderer smoke tests skipped)"
 fi

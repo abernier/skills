@@ -54,6 +54,16 @@
 # per-file list buries.
 set -euo pipefail
 
+# The same scrub as `tracerbench.sh`, for the same reason: git reads GIT_DIR and
+# friends out of the environment and lets them win over `cwd` — and over `-C`,
+# so no git call below can defend itself against one. A git hook exports them,
+# which is how a local /branchstat run inherits one, and then `ROOT_DIR`, the
+# base and the range are all read out of the hook's repository instead of the
+# one the caller stands in. It fails silently: a report on the wrong repo looks
+# exactly like a report, so drop them here, before anything resolves a repo.
+# shellcheck disable=SC2046  # intentional word-splitting of the var-name list
+unset $(git rev-parse --local-env-vars)
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPORT_TS="$SCRIPT_DIR/branchstat-report.mts"
 
