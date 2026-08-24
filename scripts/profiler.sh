@@ -157,15 +157,16 @@ trap_teardown bench_teardown
 
 # Fold one side's raw commit log into the report `profiler.compare.ts` reads.
 # A side that produced no commit log ran a spec that failed or predates the
-# harness — the compare step below already has an answer for that, so skip it
-# and let it speak. A commit log that exists but cannot be folded is a broken
-# contract instead, and `profiler.aggregate.ts` exits non-zero, which stops the
-# run: an empty aggregate would read as "no regressions".
+# harness — it gets no report, and the compare step below turns that into a red
+# run rather than a diff of one side against itself. A commit log that exists
+# but cannot be folded is a broken contract instead, and `profiler.aggregate.ts`
+# exits non-zero, which stops the run: an empty aggregate would read as "no
+# regressions".
 aggregate_side() {
   local side="$1"
   local commits="$RESULTS_DIR/$side/commits.json"
   if [[ ! -f "$commits" ]]; then
-    echo "⚠️  No $side commit log ($commits) — nothing to aggregate."
+    echo "❌ No $side commit log ($commits) — the $side leg recorded nothing, so it gets no report."
     return 0
   fi
   echo "⏳ Aggregating $side commit log…"
@@ -210,14 +211,26 @@ echo "✅ scan bundle: $SCAN_BUNDLE ($(wc -c <"$SCAN_BUNDLE" | tr -d ' ') bytes)
 echo ""
 
 # ── 1. Benchmark experiment (current branch) ─────────────────────────────────
+# A leg is allowed to fail without stopping the run — the other side is still
+# worth measuring, and the compare step is what decides the verdict. What is not
+# allowed is failing quietly: a leg that dies at config load is discovered pages
+# later as a missing report, and "no report" reads as a much smaller problem
+# than "the spec never started". So each leg's status is kept and said out loud
+# here, where the output explaining it is still on screen.
+#
+# The status itself does not gate: a spec can fail an assertion and still have
+# recorded a good commit log, and voiding a real measurement over that would be
+# a different bug. What gates is whether the side produced a report at all.
 echo "⏳ Benchmarking experiment ($CURRENT_BRANCH)…"
+EXPERIMENT_LEG=0
 (
   cd "$ROOT_DIR"
   PROFILER_PORT=$EXPERIMENT_PORT \
   PROFILER_COMMITS="$RESULTS_DIR/experiment/commits.json" \
   PROFILER_SCAN_BUNDLE="$SCAN_BUNDLE" \
   pnpm run test:profiler
-) || true
+) || EXPERIMENT_LEG=$?
+[[ $EXPERIMENT_LEG -eq 0 ]] || echo "❌ The experiment leg exited $EXPERIMENT_LEG — its output above says why."
 aggregate_side experiment
 echo ""
 
@@ -282,13 +295,15 @@ while IFS= read -r rel; do
 done < <(bench_config_list controlWorktreeCopy)
 
 echo "⏳ Benchmarking control ($CONTROL_BRANCH)…"
+CONTROL_LEG=0
 (
   cd "$WORKTREE_DIR"
   PROFILER_PORT=$CONTROL_PORT \
   PROFILER_COMMITS="$RESULTS_DIR/control/commits.json" \
   PROFILER_SCAN_BUNDLE="$SCAN_BUNDLE" \
   "$WORKTREE_DIR/node_modules/.bin/playwright" test --config playwright.profiler.config.ts
-) || true
+) || CONTROL_LEG=$?
+[[ $CONTROL_LEG -eq 0 ]] || echo "❌ The control leg exited $CONTROL_LEG — its output above says why."
 aggregate_side control
 # Free the worktree before the compare step (the teardown would also run it on
 # exit, but cleaning up early reclaims disk while we still have work to do).
@@ -297,29 +312,45 @@ WORKTREE_DIR=""
 echo ""
 
 # ── 3. Compare ──────────────────────────────────────────────────────────────
-# Graceful handling: if either side failed to produce a report, emit an
-# explanatory comment instead of crashing the comparison script. This is
-# expected on the very PR that *introduces* the profiler infra — the control
-# branch (typically `main`) lacks `<React.Profiler>` until that PR merges.
+# A side that produced no report gets a comment saying so rather than a crash:
+# what *was* measured is still worth printing, and on the PR that introduces the
+# profiler to a repo — where the control branch cannot run the scenario at all —
+# that comment is the whole deliverable.
+#
+# What such a run is not is a pass. Nothing was compared, so no number in it is
+# a comparison, and the run exits non-zero. `profiler.aggregate.ts` refuses an
+# unfoldable commit log for exactly this reason one level down: an answer that
+# looks like "no regressions" must never come out of a bench that did not
+# measure. There is no legitimate case here of "nothing to compare against" —
+# both sides run the *experiment's* spec and config, so a control that cannot
+# produce a report is a control that could not run this bench, never a control
+# there was no point comparing to.
+#
+# CI keeps its shape either way: the reusable `perf.yml` runs the bench under
+# `continue-on-error` unless the caller asked for `strict`, so a soft run still
+# posts the comment and stays green. A strict run, and `lgtm-perf`, go red —
+# which is what asking for strictness means.
+STATUS=0
 CONTROL_REPORT="$RESULTS_DIR/control/report.json"
 EXPERIMENT_REPORT="$RESULTS_DIR/experiment/report.json"
 
 if [[ ! -f "$EXPERIMENT_REPORT" ]]; then
   # No experiment report = nothing to show. Hard fallback.
-  echo "⚠️  Experiment report missing — cannot proceed."
+  STATUS=1
+  echo "❌ Experiment report missing — cannot proceed."
   {
     echo "## 🧪 Profiler — re-render regression check"
     echo ""
     echo "❌ **Experiment report missing** — the bench failed to produce data for this PR's branch."
   } > "$RESULTS_DIR/comment.md"
 elif [[ ! -f "$CONTROL_REPORT" ]]; then
-  # Experiment-only mode: control failed (typical when the target branch
-  # predates the profiler infra and can't run the scripted scenario).
-  # We still produce a useful comment by running `profiler-compare` with
-  # experiment as both sides — the resulting tables show this PR's
-  # actual measurements (all deltas = 0), and we prepend a banner that
-  # makes the "no baseline" status explicit.
-  echo "⚠️  Control report missing — emitting experiment-only summary."
+  # Experiment-only mode: the control leg produced no report, so there is
+  # nothing to diff against. The tables are still emitted — `profiler-compare`
+  # is run with experiment as *both* sides, which is the only way to print this
+  # PR's own measurements — but every delta in them is this run compared with
+  # itself, and the banner and the exit status both say so.
+  STATUS=1
+  echo "❌ Control report missing — nothing was compared. Emitting an experiment-only summary."
 
   # Banner emits the single `## Profiler …` header (we strip the
   # duplicate that profiler-compare prepends, see the `tail -n +2` below)
@@ -328,11 +359,11 @@ elif [[ ! -f "$CONTROL_REPORT" ]]; then
   {
     echo "## 🧪 Profiler — re-render regression check"
     echo ""
-    echo "### No baseline available"
+    echo "### ❌ No baseline — nothing was compared"
     echo ""
-    echo "The control branch (\`$CONTROL_BRANCH\`) couldn't produce a report (likely predates the \`<React.Profiler>\` / bippy instrumentation, or its app shell differs enough that the scripted scenario can't run). Once these commits land on \`$CONTROL_BRANCH\`, subsequent PRs will get a real diff against this baseline."
+    echo "The control branch (\`$CONTROL_BRANCH\`) produced no report, so this run measured one side only and **is not a pass**. Its leg's own output says why it failed — a branch that predates the instrumentation, an installed \`@abernier/skills\` older than the config copied forward, or an app shell the scripted scenario can't drive."
     echo ""
-    echo "Showing this PR's standalone measurements below (deltas read as +0% because there is no real baseline)."
+    echo "The tables below are this PR's standalone measurements, diffed against themselves. Every delta reads 0.0% because both columns are the same run — they are not a comparison. Once a control that can run the bench exists, subsequent PRs get a real diff."
     echo ""
     echo "---"
     echo ""
@@ -346,6 +377,10 @@ elif [[ ! -f "$CONTROL_REPORT" ]]; then
     --soft
   )
   "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler.compare.ts" "${COMPARE_ARGS[@]}" || true
+  # The comparer prints its own verdict, and here that verdict is a run agreeing
+  # with itself. It gets the last word on the console otherwise — which is
+  # exactly the `✅ PASS` two repos read as a green bench.
+  echo "❌ Nothing was compared — that verdict is this run against itself."
   if [[ -f "$RESULTS_DIR/_compare.md" ]]; then
     # `tail -n +2` drops profiler-compare's own `## Profiler …` title
     # since the banner already provides one — avoids the double-title bug.
@@ -376,7 +411,11 @@ else
   if [[ -n "$SOFT_FLAG" ]]; then
     COMPARE_ARGS+=("$SOFT_FLAG")
   fi
-  "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler.compare.ts" "${COMPARE_ARGS[@]}"
+  # `|| STATUS=$?`, not a bare call: under `--strict` the comparer exits 1 on a
+  # regression, and `set -e` would take the script down with it — before the
+  # footer that names the commit the numbers belong to, on exactly the runs
+  # where someone will want it. The verdict is carried to the exit line instead.
+  "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler.compare.ts" "${COMPARE_ARGS[@]}" || STATUS=$?
 fi
 
 # The repro command is rebuilt from the resolved flags rather than echoed from
@@ -404,3 +443,5 @@ echo ""
 if [[ -f "$RESULTS_DIR/comment.md" ]]; then
   echo "📄 $RESULTS_DIR/comment.md"
 fi
+
+exit $STATUS
