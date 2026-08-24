@@ -21,7 +21,7 @@
   // it. `tsconfig.build.json` globs `*.mjs` alone, checks them, and writes
   // those declarations. `pnpm run typecheck` runs both.
   //
-  // `scripts`, and only `scripts`: `fixtures/bench.e2e` is a React app with its
+  // `scripts`, and only `scripts`: `fixtures/app` is a React app with its
   // own tsconfig, compiled by vite and by nothing here. Keeping it outside this
   // `include` is what keeps `.tsx` out of this program — no `exclude` needed.
   "include": ["scripts"]

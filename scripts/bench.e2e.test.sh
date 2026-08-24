@@ -67,8 +67,8 @@ REGRESSED_ROWS=6000
 
 # ── The fixture app ──────────────────────────────────────────────────────────
 #
-# `fixtures/bench.e2e/` — a real React app, on disk, in this repository. It runs
-# on its own (`pnpm --dir fixtures/bench.e2e dev`), which is the point of it
+# `fixtures/app/` — a real React app, on disk, in this repository. It runs
+# on its own (`pnpm -C fixtures/app dev`), which is the point of it
 # being a directory: when a bench misbehaves you can start the app it was
 # measuring and look at it.
 #
@@ -79,7 +79,7 @@ REGRESSED_ROWS=6000
 # It is as small as a React app both benches can drive gets: an entry, a
 # component tree three deep, a `<React.Profiler>` zone because the profiler's
 # report carries zone totals, and one exported constant that scales the work.
-fixture_dir="$pkg_dir/fixtures/bench.e2e"
+fixture_dir="$pkg_dir/fixtures/app"
 
 # Named rather than a `cp -R` of the whole directory: a standalone run of the
 # fixture leaves a `dist/`, a `node_modules/` and a results directory behind,
@@ -104,7 +104,7 @@ copy_app() {
 
   # Set rather than inherited from the checkout: `CONTROL_ROWS` is what every
   # case below is calibrated against, and the committed value of `src/rows.ts`
-  # is only what a standalone `pnpm --dir fixtures/bench.e2e dev` renders.
+  # is only what a standalone `pnpm -C fixtures/app dev` renders.
   set_rows "$repo" "$CONTROL_ROWS"
 
   # Same lockfile on both sides, so a control worktree symlinks `node_modules`

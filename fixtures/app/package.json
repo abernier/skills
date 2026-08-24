@@ -1,10 +1,16 @@
 {
-  "name": "bench-e2e-fixture",
+  "name": "@fixture/app",
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "vite",
     "build": "vite build",
     "test:tracerbench": "playwright test --config playwright.tracerbench.config.ts",
     "test:profiler": "playwright test --config playwright.profiler.config.ts"
+  },
+  "devDependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vite": "^8.2.2"
   }
 }
