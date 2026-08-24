@@ -161,7 +161,8 @@ copy_app() {
 # The one knob. Both benches read the same number: more rows is more fiber
 # renders for the profiler and more milliseconds for TracerBench.
 set_rows() {
-  printf 'export const ROWS = %s;\n' "$2" > "$(app_dir "$1")/src/rows.ts"
+  printf 'export const ROWS = Number(import.meta.env.VITE_ROWS) || %s;\n' "$2" \
+    > "$(app_dir "$1")/src/rows.ts"
 }
 
 # `node_modules` is a real directory of symlinks rather than one symlink to this
@@ -227,13 +228,11 @@ link_app_node_modules() {
 # tells the dev server and the preview server where it moved is `dev` and
 # `preview` here, because the Playwright configs call them by name.
 #
-# Not an environment variable, and this is worth knowing outside the fixture:
-# the profiler's two legs do not start the same way. The experiment leg runs
-# `pnpm run test:profiler`; the control leg execs the worktree's `playwright`
-# binary directly. So a `test:profiler` script that exports something — an env
-# prefix, a `pre` step — exports it on one side only, and a bench whose control
-# leg silently loses it reports a red PR that is not red. A command the config
-# spells out is spawned by Playwright on both.
+# Not an environment variable exported by `test:profiler`, and this is worth
+# knowing outside the fixture: neither bench reads that script on the control
+# leg, and the profiler now reads it on neither. A command the config spells out
+# is spawned by Playwright on both legs, which is the only place a layout can
+# live and be seen by both. Case 6 below is that rule under test.
 #
 # The five script names are the fixture's own, read out of its manifest rather
 # than restated here, so a rename over there cannot leave this behind.
@@ -346,6 +345,30 @@ write_manifest_deps() {
     manifest.pnpm = own.pnpm;
     fs.writeFileSync(repoDir + "/package.json", JSON.stringify(manifest, null, 2) + "\n");
   ' "$pkg_dir" "$1" "${2:-}"
+}
+
+# Put an environment prefix in `test:profiler`, and commit it, so that both
+# branches carry it and the two sides stay identical.
+#
+# A repo that has to say one thing about the run before Playwright starts says
+# it here, and nothing in this harness's contract says it may not. `VITE_ROWS`
+# stands for whatever that thing is: a feature flag, a seed, the app's location
+# in the tree. What the case below asserts is that saying it changes no number,
+# because it reaches both legs or neither.
+prefix_test_profiler() {
+  node -e '
+    const fs = require("node:fs");
+    const [file, rows] = process.argv.slice(1);
+    const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
+    manifest.scripts["test:profiler"] =
+      `VITE_ROWS=${rows} ` + manifest.scripts["test:profiler"];
+    fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + "\n");
+  ' "$(app_dir "$1")/package.json" "$2"
+  git -C "$1" add -A
+  git -C "$1" commit -qm "a test:profiler that says something about the run"
+  # The experiment is the working tree, and the control must be the same tree:
+  # the point of the case is a repo where nothing changed.
+  git -C "$1" branch -f control-ok
 }
 
 # The other shape of control worktree: one the harness has to install into.
@@ -763,6 +786,40 @@ if comment_says "$repo/profiler-results" "✅ PASS" \
   pass "and the comment is a comparison, not a one-sided summary"
 else
   fail "and the comment is not a comparison" "$repo/profiler-results/comment.md"
+fi
+
+# 6. A `test:profiler` script that says something about the run.
+#
+#    Nothing changed between the two branches: same source, same manifest, same
+#    commit. The bench must therefore report no change — and it does only if
+#    both legs start the same way.
+#
+#    They did not. The experiment leg ran `pnpm run test:profiler` and the
+#    control leg exec'd the worktree's `playwright` binary, so an environment
+#    prefix in that script reached one side only: the experiment rendered sixty
+#    times the rows the control did, and two identical branches produced a
+#    blocking regression. That is the failure worth catching — not a leg that
+#    dies, which is loud, but a leg that runs under conditions the other one
+#    never saw.
+#
+#    Rows and not, say, a tick count, because the comparer normalises component
+#    renders by React commits per step: a leg that merely commits more often is
+#    already suppressed as event-capture variance. Rows move the renders *inside*
+#    a commit, which is the half no normalisation can absorb — and the half a
+#    reviewer would read as this PR's doing.
+repo="$tmp/prof-script-env"
+make_repo "$repo"
+prefix_test_profiler "$repo" "$REGRESSED_ROWS"
+run_bench "$repo" profiler "${PROFILER_ARGS[@]}" --control control-ok
+if [[ $status -eq 0 ]]; then
+  pass "a test:profiler that carries an env prefix does not skew the bench"
+else
+  fail "a test:profiler that carries an env prefix exited $status" "$log"
+fi
+if comment_says "$repo/profiler-results" "✅ PASS"; then
+  pass "and the comment says PASS"
+else
+  fail "and the comment does not say PASS" "$repo/profiler-results/comment.md"
 fi
 
 # The `--no-gate` case has no profiler half. Its gate widths are flags with

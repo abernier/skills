@@ -47,6 +47,11 @@
  * a function, not a string, because the port is derived here — from `TB_PORT`
  * or `PROFILER_PORT` — and you cannot write the command without it.
  *
+ * For the **profiler**, spell it `pnpm run …` or `pnpm exec …` and not a bare
+ * `vite`: `profiler.sh` starts both of its legs by exec'ing Playwright itself,
+ * so `node_modules/.bin` is on neither leg's `PATH`. TracerBench runs both legs
+ * through your `test:tracerbench`, so a bare binary resolves there.
+ *
  * `timeout` when a side takes longer than two minutes, which is the default.
  *
  * Everything else has an answer that is the same in every repo, and lives here.

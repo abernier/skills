@@ -8,8 +8,7 @@ export default tracerbenchConfig({
   // into every layout the suite builds, and where the app is differs between
   // them. A script name is the same sentence in all of them, and the manifest
   // next to it — the flat repo's, the workspace root's — is the one file that
-  // already knows where the app went. See the note in the profiler config for
-  // why it has to be the command that carries this and not the environment.
+  // already knows where the app went.
   command: ({ previewArgs }) => `pnpm run preview ${previewArgs}`,
   timeout: 60_000,
   webServer: { timeout: 60_000 },
