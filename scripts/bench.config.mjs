@@ -26,7 +26,10 @@
  * `node`, before any repo's `tsx` is in the picture, and `bench.config.d.mts`
  * gives the TypeScript half its types. `node` rather than `jq`: no repo can
  * assume jq, and all of them already require node to run a bench at all.
+ * That declaration is generated from the JSDoc below — `pnpm run types:emit`.
+ * Edit the JSDoc, not the declaration.
  */
+
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,6 +49,8 @@ export const CONFIG_FILENAME = "bench.json";
  *  - `thresholds.*` — a width is one repo's calibration on one machine, so an
  *    absent one adds no gate rather than inventing one. The bench still
  *    measures and still writes its comment; it exits 0 without judging.
+ *
+ * @type {Pick<BenchConfig, "sourceRoots" | "shadcnUiRoot" | "distDir">}
  */
 export const DEFAULTS = {
   /** Where the app's own components live, repo-relative, in search order. */
@@ -63,15 +68,19 @@ export const DEFAULTS = {
  * `rootDir` is the repository being measured, never the directory this harness
  * is installed in.
  *
+ * An absent file means the defaults; a file that exists but does not parse
+ * throws.
+ *
  * @param {string} rootDir
- * @returns {import("./bench.config.d.mts").BenchConfig}
+ * @returns {BenchConfig}
  */
 export function readBenchConfig(rootDir) {
   const file = path.join(rootDir, CONFIG_FILENAME);
   let declared = {};
   try {
     declared = JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch (err) {
+  } catch (cause) {
+    const err = /** @type {NodeJS.ErrnoException} */ (cause);
     if (err.code === "ENOENT") return { ...DEFAULTS };
     throw new Error(`bench config: ${file}: ${err.message}`);
   }
@@ -109,8 +118,40 @@ if (
   try {
     const config = readBenchConfig(process.argv[2] ?? process.cwd());
     for (const line of dumpLines(config)) console.log(line);
-  } catch (err) {
+  } catch (cause) {
+    const err = /** @type {Error} */ (cause);
     console.error(err.message);
     process.exit(1);
   }
 }
+
+// The vocabulary, last on purpose. A `@typedef` comment never attaches to the
+// type alias `tsc` synthesizes from it — it is re-emitted where it sat in the
+// source, so kept here it reads as a footnote under the docs that use it.
+// Line comments like this one are dropped from the emit, so this note stays put.
+
+/**
+ * The resolved contents of `bench.json`, defaults already applied.
+ *
+ * The three keys with a default are always present. The rest are optional
+ * because an absent one means "adds nothing", not "use a guess".
+ *
+ * @typedef {object} BenchConfig
+ * @property {string[]} sourceRoots Where the app's own components live, repo-relative, in search order.
+ * @property {string} shadcnUiRoot Vendored shadcn primitives — never actionable, so never gated.
+ * @property {string} distDir Where `pnpm run build` leaves the bundle.
+ * @property {string[]} [workspacePackages] Packages whose own `node_modules` a control worktree needs symlinked alongside the root one.
+ * @property {string[]} [controlWorktreeCopy] Extra repo-relative files the control worktree needs, on top of the ones every repo copies.
+ * @property {BenchThresholds} [thresholds] Gate widths, in percent. Absent means no gate — never a default width.
+ */
+
+/**
+ * Gate widths, in percent. Every one is optional, and an absent one adds no
+ * gate rather than inventing a width.
+ *
+ * @typedef {object} BenchThresholds
+ * @property {number} [tracerbenchMs] Wall-clock regression gate for CI.
+ * @property {number} [tracerbenchFrames] Rendered-frames gate for CI — borrows the ms width when it is alone.
+ * @property {number} [localTracerbenchMs] The local `bench.lgtm.sh` gate, deliberately tighter than CI's.
+ * @property {number} [localTracerbenchFrames] The local frames gate; absent, the CI width stands.
+ */

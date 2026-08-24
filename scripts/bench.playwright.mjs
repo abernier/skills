@@ -1,5 +1,3 @@
-import { defineConfig } from "@playwright/test";
-
 /**
  * The Playwright configs the two benches run under.
  *
@@ -58,32 +56,26 @@ import { defineConfig } from "@playwright/test";
  * Shipped as `.mjs` on purpose. Node strips types in first-party files only, so
  * a `.ts` file under `node_modules` throws `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`
  * the moment a config imports it, and Playwright does not transform
- * `node_modules` either. The types live next door in `bench.playwright.d.mts`.
+ * `node_modules` either. `bench.playwright.d.mts` beside it is generated from
+ * the JSDoc below — `pnpm run types:emit`. Edit the JSDoc, not the declaration.
  */
 
-/** Read a port out of the environment, falling back when it is unset or unparseable. */
+/**
+ * @import { PlaywrightTestConfig } from "@playwright/test"
+ */
+
+import { defineConfig } from "@playwright/test";
+
+/**
+ * Read a port out of the environment, falling back when it is unset or unparseable.
+ *
+ * @param {string} name
+ * @param {number} fallback
+ * @returns {number}
+ */
 function port(name, fallback) {
   return Number(process.env[name]) || fallback;
 }
-
-/**
- * What `tracerbenchConfig`'s `command` is handed.
- *
- * @typedef {object} TracerbenchServer
- * @property {number} port The resolved `TB_PORT`.
- * @property {string} baseURL `http://localhost:<port>`, the same URL the tests use.
- * @property {string | undefined} dist The resolved `TB_DIST`, or `undefined` when the app should serve its own default build.
- * @property {string} previewArgs The `vite preview` flags for this run — `--outDir` (only when `TB_DIST` is set), `--port` and `--strictPort`, ready to append to whatever runs vite in your repo. A non-vite server ignores it and reads `port` and `dist` directly.
- */
-
-/**
- * Options for the TracerBench config.
- *
- * @typedef {object} TracerbenchOptions
- * @property {(server: TracerbenchServer) => string} command How to serve the production build. Called with the port already resolved.
- * @property {number} [timeout] Per-test budget in ms. Default `120_000`.
- * @property {object} [webServer] Shallow-merged over the derived `webServer`, for a server story the two knobs above do not cover — extra `env`, a different boot `timeout`, `stdout`.
- */
 
 /**
  * The Playwright config the `tracerbench` bench runs your `e2e/tracerbench.spec.ts` under.
@@ -103,9 +95,10 @@ function port(name, fallback) {
  * one branch gets benched twice.
  *
  * @param {TracerbenchOptions} options
- * @returns {import("@playwright/test").PlaywrightTestConfig}
+ * @returns {PlaywrightTestConfig}
  */
-export function tracerbenchConfig({ command, timeout = 120_000, webServer }) {
+export function tracerbenchConfig(options) {
+  const { command, timeout = 120_000, webServer } = options;
   const tbPort = port("TB_PORT", 4200);
   const baseURL = `http://localhost:${tbPort}`;
   const dist = process.env.TB_DIST;
@@ -146,23 +139,6 @@ export function tracerbenchConfig({ command, timeout = 120_000, webServer }) {
 }
 
 /**
- * What `profilerConfig`'s `command` is handed.
- *
- * @typedef {object} ProfilerServer
- * @property {number} port The resolved `PROFILER_PORT`.
- * @property {string} baseURL `http://localhost:<port>`, the same URL the tests use.
- */
-
-/**
- * Options for the profiler config.
- *
- * @typedef {object} ProfilerOptions
- * @property {(server: ProfilerServer) => string} command How to start the **dev** server. Called with the port already resolved.
- * @property {number} [timeout] Per-test budget in ms. Default `120_000`.
- * @property {object} [webServer] Shallow-merged over the derived `webServer`, for a server story the two knobs above do not cover — extra `env`, a different boot `timeout`, `stdout`.
- */
-
-/**
  * The Playwright config the `profiler` bench runs your `e2e/profiler.spec.ts` under.
  *
  * Render counts, against `vite dev` — **not** `vite preview`. `<React.Profiler>`
@@ -183,9 +159,10 @@ export function tracerbenchConfig({ command, timeout = 120_000, webServer }) {
  * nothing about the recorder is copied across branches.
  *
  * @param {ProfilerOptions} options
- * @returns {import("@playwright/test").PlaywrightTestConfig}
+ * @returns {PlaywrightTestConfig}
  */
-export function profilerConfig({ command, timeout = 120_000, webServer }) {
+export function profilerConfig(options) {
+  const { command, timeout = 120_000, webServer } = options;
   const profilerPort = port("PROFILER_PORT", 4300);
   const baseURL = `http://localhost:${profilerPort}`;
 
@@ -221,3 +198,46 @@ export function profilerConfig({ command, timeout = 120_000, webServer }) {
     ],
   });
 }
+
+// The vocabulary, last on purpose. A `@typedef` comment never attaches to the
+// type alias `tsc` synthesizes from it — it is re-emitted where it sat in the
+// source. Kept here, the generated declaration reads as the curated function
+// docs first and these blocks as a footnote under the types they describe;
+// kept at the top, they land in the middle of the file as a wall of tags.
+// Line comments like this one are dropped from the emit, so this note stays put.
+
+/**
+ * What `tracerbenchConfig`'s `command` is handed.
+ *
+ * @typedef {object} TracerbenchServer
+ * @property {number} port The resolved `TB_PORT`.
+ * @property {string} baseURL `http://localhost:<port>`, the same URL the tests use.
+ * @property {string | undefined} dist The resolved `TB_DIST`, or `undefined` when the app should serve its own default build.
+ * @property {string} previewArgs The `vite preview` flags for this run — `--outDir` (only when `TB_DIST` is set), `--port` and `--strictPort`, ready to append to whatever runs vite in your repo. A non-vite server ignores it and reads `port` and `dist` directly.
+ */
+
+/**
+ * Options for the TracerBench config.
+ *
+ * @typedef {object} TracerbenchOptions
+ * @property {(server: TracerbenchServer) => string} command How to serve the production build. Called with the port already resolved.
+ * @property {number} [timeout] Per-test budget in ms. Default `120_000`.
+ * @property {Partial<NonNullable<PlaywrightTestConfig["webServer"]>>} [webServer] Shallow-merged over the derived `webServer`, for a server story the two knobs above do not cover — extra `env`, a different boot `timeout`, `stdout`.
+ */
+
+/**
+ * What `profilerConfig`'s `command` is handed.
+ *
+ * @typedef {object} ProfilerServer
+ * @property {number} port The resolved `PROFILER_PORT`.
+ * @property {string} baseURL `http://localhost:<port>`, the same URL the tests use.
+ */
+
+/**
+ * Options for the profiler config.
+ *
+ * @typedef {object} ProfilerOptions
+ * @property {(server: ProfilerServer) => string} command How to start the **dev** server. Called with the port already resolved.
+ * @property {number} [timeout] Per-test budget in ms. Default `120_000`.
+ * @property {Partial<NonNullable<PlaywrightTestConfig["webServer"]>>} [webServer] Shallow-merged over the derived `webServer`, for a server story the two knobs above do not cover — extra `env`, a different boot `timeout`, `stdout`.
+ */
