@@ -1,0 +1,16 @@
+// Read by vite, not by this repo's `tsc` — the root program stops at
+// `scripts/`, and this app is deliberately outside it.
+//
+// `jsx: react-jsx` is the whole reason the file exists: vite reads it to pick
+// the automatic JSX runtime, which is what keeps `@vitejs/plugin-react` out of
+// the package's devDependencies.
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true
+  }
+}

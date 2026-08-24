@@ -10,6 +10,14 @@ export default defineConfig({
     // gate can go red over code that is on no branch at all, or stay green on
     // a suite nobody is editing. A gate has to mean the same thing locally and
     // in CI, and CI has no worktrees.
-    exclude: [...configDefaults.exclude, ".claude/worktrees/**"],
+    //
+    // `fixtures/` for a different reason: the e2e fixture app carries two
+    // Playwright specs, and `*.spec.ts` is a vitest glob too. They are driven
+    // by `scripts/bench.e2e.test.sh` from a scratch repo, never from here.
+    exclude: [
+      ...configDefaults.exclude,
+      ".claude/worktrees/**",
+      "fixtures/**",
+    ],
   },
 });
