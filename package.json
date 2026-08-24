@@ -40,8 +40,8 @@
     "changeset": "changeset",
     "changeset:version": "changeset version && node scripts/sync-plugin-version.mts",
     "typecheck": "tsc --noEmit",
-    "lint": "shellcheck --severity=warning scripts/branchstat.sh scripts/branchstat.test.sh scripts/release-tag.sh scripts/bench.common.sh scripts/bench.common.test.sh scripts/bench.config.sh scripts/bench.lgtm.sh scripts/profiler.sh scripts/profiler.aggregate.sh scripts/profiler.compare.sh scripts/tracerbench.sh scripts/tracerbench.compare.sh",
-    "test": "bash scripts/branchstat.test.sh && bash scripts/bench.common.test.sh && vitest run",
+    "lint": "shellcheck --severity=warning scripts/branchstat.sh scripts/branchstat.test.sh scripts/release-tag.sh scripts/bench.common.sh scripts/bench.common.test.sh scripts/bench.config.sh scripts/bench.config.test.sh scripts/bench.lgtm.sh scripts/profiler.sh scripts/profiler.aggregate.sh scripts/profiler.compare.sh scripts/tracerbench.sh scripts/tracerbench.compare.sh",
+    "test": "bash scripts/branchstat.test.sh && bash scripts/bench.common.test.sh && bash scripts/bench.config.test.sh && vitest run",
     "lgtm": "pnpm run typecheck && pnpm run lint && pnpm run test && echo 'LGTM!'"
   },
   "devDependencies": {

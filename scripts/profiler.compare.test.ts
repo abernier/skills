@@ -11,6 +11,7 @@ import {
   expect,
   it,
 } from "vitest";
+import { DEFAULTS, readBenchConfig } from "./bench.config.mjs";
 
 /**
  * End-to-end tests for `scripts/profiler.compare.ts`.
@@ -797,18 +798,8 @@ describe("profiler-compare verdict", () => {
  */
 const REAL_REPO = CONSUMER;
 
-/** This repo's own bench config, read exactly the way the script reads it. */
-const realRepoConfig: { sourceRoots?: string[]; shadcnUiRoot?: string } =
-  (() => {
-    try {
-      return JSON.parse(
-        fs.readFileSync(path.join(REAL_REPO, "bench.json"), "utf8"),
-      );
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
-      throw err;
-    }
-  })();
+/** This repo's own bench config, read through the reader the script uses. */
+const realRepoConfig = readBenchConfig(REAL_REPO);
 
 /**
  * Whether this repo is one the block below can say anything about.
@@ -830,7 +821,7 @@ const realRepoConfig: { sourceRoots?: string[]; shadcnUiRoot?: string } =
  * two, so the throw still fires everywhere it means anything.
  */
 const CLAIMS_A_SOURCE_TREE =
-  realRepoConfig.sourceRoots !== undefined ||
+  realRepoConfig.sourceRoots.join("\n") !== DEFAULTS.sourceRoots.join("\n") ||
   fs.existsSync(path.join(REAL_REPO, "src"));
 
 if (!CLAIMS_A_SOURCE_TREE) {
@@ -861,8 +852,8 @@ const describeAgainstThisRepo = describe.skipIf(!CLAIMS_A_SOURCE_TREE);
  * failure this block exists to catch.
  */
 function aFirstPartyComponent(): { name: string; file: string } {
-  const roots = realRepoConfig.sourceRoots ?? ["src"];
-  const shadcnRoot = realRepoConfig.shadcnUiRoot ?? "src/components/ui/";
+  const roots = realRepoConfig.sourceRoots;
+  const shadcnRoot = realRepoConfig.shadcnUiRoot;
 
   const candidates: { name: string; file: string }[] = [];
   const vendored = new Set<string>();

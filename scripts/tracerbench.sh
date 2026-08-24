@@ -96,8 +96,9 @@ source "$SCRIPT_DIR/bench.config.sh"
 THRESHOLD="$(bench_config thresholds.tracerbenchMs "")"
 FRAMES_THRESHOLD="$(bench_config thresholds.tracerbenchFrames "")"
 # Where `pnpm run build` leaves the bundle. `dist` in a single-package repo, a
-# path inside the app package in a workspace.
-DIST_DIR="$(bench_config distDir dist)"
+# path inside the app package in a workspace. The default is the reader's, not
+# this line's — see `bench.config.mjs`.
+DIST_DIR="$(bench_config distDir)"
 # `TB_DIST` is handed to `vite preview --outDir`, which resolves it against the
 # vite root — the directory holding the app — so it is the last segment of
 # `DIST_DIR`, never a repo-relative path.

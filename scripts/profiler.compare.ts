@@ -45,6 +45,7 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readBenchConfig } from "./bench.config.mjs";
 
 // ---------------------------------------------------------------------------
 // Types — must match the report shape written by e2e/profiler.spec.ts
@@ -297,35 +298,25 @@ const REPO_ROOT = (() => {
 })();
 
 /**
- * Per-repo values, from `bench.json` at the measured repo's root — the same
- * file the bench shells read. Absent, or absent a key, means the defaults
- * below: one `src`, shadcn vendored under it. A file that exists but does not
- * parse is an error, not a default.
+ * Per-repo values, from `bench.json` at the measured repo's root — through the
+ * same reader the bench shells go through, so the defaults are the ones stated
+ * in `bench.config.mjs` rather than a second copy written down here.
  */
-const benchConfig: { sourceRoots?: string[]; shadcnUiRoot?: string } = (() => {
-  try {
-    return JSON.parse(
-      fs.readFileSync(path.join(REPO_ROOT, "bench.json"), "utf8"),
-    );
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
-    throw err;
-  }
-})();
+const benchConfig = readBenchConfig(REPO_ROOT);
 
 /**
  * The source roots, repo-relative and in search order. A single-package repo
  * has exactly one; a workspace names one per package holding components, and
  * they all go into the single grep invocation below.
  */
-const SOURCE_ROOTS = benchConfig.sourceRoots ?? ["src"];
+const SOURCE_ROOTS = benchConfig.sourceRoots;
 
 /**
  * Shadcn primitives are vendored here by its CLI. The repo's rule is to stay
  * stock with shadcn and never hand-edit what it vendors, so a render
  * regression inside one of these is not actionable.
  */
-const SHADCN_UI_ROOT = benchConfig.shadcnUiRoot ?? "src/components/ui/";
+const SHADCN_UI_ROOT = benchConfig.shadcnUiRoot;
 
 const sourceCache = new Map<string, SourceLoc | null>();
 
