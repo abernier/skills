@@ -265,6 +265,47 @@ if diff -q "$ROOT_DIR/pnpm-lock.yaml" "$WORKTREE_DIR/pnpm-lock.yaml" >/dev/null 
 else
   echo "   ⚠️  lockfile differs, running pnpm install in worktree…"
   (cd "$WORKTREE_DIR" && pnpm install --frozen-lockfile)
+
+  # The control supplies the application. The experiment supplies the apparatus.
+  #
+  # That install just gave the worktree the *control's* dependency tree, and
+  # this package is in it at whatever version the control branch pinned — or,
+  # on the PR that introduces the bench, not at all. The spec and the config
+  # copied in below are the experiment's, so every subpath they import has to
+  # exist over there. Both halves of that have been seen in the wild:
+  # `ERR_PACKAGE_PATH_NOT_EXPORTED` where the base pinned a version predating
+  # the subpath, and `Cannot find package '@abernier/skills'` where the base
+  # predates the package. Neither says anything about the PR — the branch that
+  # adds a bench can never have a baseline that already ran it — so the
+  # experiment's copy is laid over whatever the install produced.
+  #
+  # Copied, never symlinked. Node resolves a symlinked package from its real
+  # location, so through a link this package's `@playwright/test` — its only
+  # peer dependency — would come from the *experiment's* tree while the
+  # control's own binary drives the run: two Playwright instances in one
+  # process, and a spec importing `@abernier/skills/bench-tests` registers its
+  # tests in the one nobody is listening to. A copy resolves upward through the
+  # worktree's own `node_modules`, which is the control's Playwright, which is
+  # the one running.
+  #
+  # `package.json` plus this directory are the whole of what the package ships
+  # — see its `files` — and it declares no runtime dependencies, so there is
+  # nothing else to bring.
+  APPARATUS="$WORKTREE_DIR/node_modules/@abernier/skills"
+  {
+    rm -rf "$APPARATUS" &&
+      mkdir -p "$APPARATUS" &&
+      cp "$SCRIPT_DIR/../package.json" "$APPARATUS/package.json" &&
+      cp -R "$SCRIPT_DIR" "$APPARATUS/$(basename "$SCRIPT_DIR")"
+  } || {
+    # Loudly, and without measuring. A control leg left on the control's copy
+    # of the harness either dies at config load or measures a different
+    # scenario, and both read downstream as "the control produced no report" —
+    # a sentence about the branch, which this is not.
+    echo "❌ Could not put this harness into the control worktree ($APPARATUS)."
+    echo "   Refusing to bench the control against a harness that is not this one."
+    exit 1
+  }
 fi
 echo "✅ Control worktree ready"
 echo ""

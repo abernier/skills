@@ -194,7 +194,11 @@ types in first-party files only; a `.ts` file under `node_modules` throws
 Playwright does not transform `node_modules` either.
 
 The control worktree resolves them through its own `node_modules`, so nothing
-about them needs copying. Gestures that *are* your app's — ones that reach for
+about them needs copying — and the copy of this package it finds there is
+always the experiment's, laid over the control's tree when a differing lockfile
+made the worktree install one. The control supplies the application, the
+experiment supplies the apparatus: the PR that adds a bench, or reaches for a
+subpath its base predates, still gets a baseline. Gestures that *are* your app's — ones that reach for
 its state, or build its scene — stay in your repo and travel by
 `controlWorktreeCopy`:
 
