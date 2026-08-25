@@ -232,11 +232,16 @@ echo ""
 # report is otherwise discovered further down as an ENOENT out of the comparer,
 # pages away from the output that explains it.
 #
-# The status itself does not gate: a spec can fail one assertion and still have
-# timed every mark, and voiding a real measurement over that would be a
-# different bug. What gates is what the leg measured — a leg that timed no mark
-# at all never ran, and `tracerbench.compare.ts` refuses to call a comparison
-# over nothing a pass. That refusal, not this line, is the guard.
+# Failing does not *stop* the run — the other side is still worth measuring, and
+# the comparison still happens — but a red experiment leg does gate, at the exit
+# line below. A mark that threw did not run, and a mark that did not run reads
+# as fast: the spec records it and ends red on purpose, and this script used to
+# drop that verdict on the floor. `tracerbench.compare.ts` refusing to call a
+# comparison over nothing is the other guard, not the only one.
+#
+# The control leg is deliberately not gated: it measures the base branch, and
+# reddening this branch for what main says about itself would block a PR for
+# somebody else's finding. It is still printed.
 #
 # ── A leg starts against a free port ─────────────────────────────────────────
 #
@@ -318,6 +323,12 @@ echo "⏳ Comparing results…"
 STATUS=0
 "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/tracerbench.compare.ts" \
   "${COMPARE_ARGS[@]}" || STATUS=$?
+
+# The experiment leg's own verdict — see the header of section 3 for why this
+# one gates and the control's does not.
+if [[ $EXPERIMENT_LEG -ne 0 ]]; then
+  STATUS=1
+fi
 
 emit_comment_footer "$RESULTS_DIR/comment.md" "$ROOT_DIR" "$REPRO"
 

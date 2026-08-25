@@ -220,9 +220,17 @@ echo ""
 # than "the spec never started". So each leg's status is kept and said out loud
 # here, where the output explaining it is still on screen.
 #
-# The status itself does not gate: a spec can fail an assertion and still have
-# recorded a good commit log, and voiding a real measurement over that would be
-# a different bug. What gates is whether the side produced a report at all.
+# Failing does not *stop* the run — the measurement is still worth having, and
+# the compare step still runs — but a red experiment leg does gate, at the exit
+# line below. The spec's assertions are the branch's verdict on itself: the
+# family-B ceiling ("this gesture must not commit React per pointer event") is
+# one of them, and a catalogue's whole reason for existing can live in an
+# assertion no percentage threshold can express. Dropping that status let a
+# planted camera-state leak — orbit 2 → 444 commits — through a green run.
+#
+# The control leg is deliberately not gated: it measures the base branch, and
+# reddening this branch for what main asserts about itself would block a PR for
+# somebody else's finding. It is still printed.
 echo "⏳ Benchmarking experiment ($CURRENT_BRANCH)…"
 EXPERIMENT_LEG=0
 (
@@ -374,6 +382,13 @@ echo ""
 # posts the comment and stays green. A strict run, and `lgtm-perf`, go red —
 # which is what asking for strictness means.
 STATUS=0
+
+# The experiment leg's own verdict, carried to the exit line — see the header of
+# section 1 for why this one gates and the control's does not.
+if [[ $EXPERIMENT_LEG -ne 0 ]]; then
+  STATUS=1
+fi
+
 CONTROL_REPORT="$RESULTS_DIR/control/report.json"
 EXPERIMENT_REPORT="$RESULTS_DIR/experiment/report.json"
 
