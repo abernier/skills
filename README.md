@@ -91,7 +91,7 @@ repo does differently stays in that repo.
 
   jobs:
     branchstat:
-      uses: abernier/skills/.github/workflows/branchstat.yml@v0.12.0
+      uses: abernier/skills/.github/workflows/branchstat.yml@v0.13.0
       permissions:
         contents: read
         pull-requests: write
@@ -121,7 +121,7 @@ The pipeline ships here; the scenarios stay yours — `e2e/*.spec.ts`,
 that run them.
 
 ```
-pnpm add -D github:abernier/skills#v0.12.0
+pnpm add -D github:abernier/skills#v0.13.0
 ```
 
 ```json
@@ -385,7 +385,7 @@ concurrency:
 
 jobs:
   perf:
-    uses: abernier/skills/.github/workflows/perf.yml@v0.12.0
+    uses: abernier/skills/.github/workflows/perf.yml@v0.13.0
     permissions:
       contents: read
       pull-requests: write
