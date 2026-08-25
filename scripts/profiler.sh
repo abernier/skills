@@ -329,8 +329,17 @@ store_control_cache() {
     rm -rf "$staging"
     return 0
   }
+  # Compressed, and only this one. The raw commit log is the whole catalogue's
+  # every fiber render with its cause — 32.6 MB on `tilt`, against 375 KB for
+  # the report folded out of it. Nothing downstream reads it: the comparer diffs
+  # the reports, and this is restored only so a cache hit leaves the same
+  # artefacts on disk as the run it stands in for. Paying 32 MB an entry for a
+  # file kept purely to be read by hand is not a trade worth making, and it is
+  # JSON — measured 32.6 MB to 874 KB, 37x, in 0.14 s to write and 0.02 s to
+  # read back. The report stays plain: it is small, and it is the one file every
+  # cache hit has to open.
   if [[ -f "$RESULTS_DIR/control/commits.json" ]]; then
-    cp "$RESULTS_DIR/control/commits.json" "$staging/commits.json" 2>/dev/null || true
+    gzip -c "$RESULTS_DIR/control/commits.json" > "$staging/commits.json.gz" 2>/dev/null || true
   fi
   printf '%s\n' "$CACHE_MANIFEST" > "$staging/key.txt" 2>/dev/null || true
   rm -rf "$CACHE_ENTRY"
@@ -451,8 +460,8 @@ if [[ -n "$CACHE_KEYABLE" && "$CONTROL_CACHE" != "0" && -f "$CACHE_ENTRY/report.
   echo "   key ${CACHE_KEY:0:12} — $CACHE_ENTRY/key.txt"
   echo "   Re-measure it with PROFILER_CONTROL_CACHE=0, or --no-cache."
   cp "$CACHE_ENTRY/report.json" "$RESULTS_DIR/control/report.json"
-  if [[ -f "$CACHE_ENTRY/commits.json" ]]; then
-    cp "$CACHE_ENTRY/commits.json" "$RESULTS_DIR/control/commits.json"
+  if [[ -f "$CACHE_ENTRY/commits.json.gz" ]]; then
+    gunzip -c "$CACHE_ENTRY/commits.json.gz" > "$RESULTS_DIR/control/commits.json"
   fi
   # Last use, not last write: pruning keeps whatever is still being asked for.
   touch "$CACHE_ENTRY"

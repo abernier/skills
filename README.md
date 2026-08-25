@@ -327,6 +327,15 @@ own assertions** is never kept, and every entry records its key in longhand at
 Entries live in the repository's common git dir — shared by every worktree,
 newest five kept.
 
+An entry is the report, the key, and the raw commit log **gzipped**. That log is
+the whole catalogue's every fiber render with its cause and is by far the
+largest thing here — 32.6 MB against 375 KB for the report folded out of it, on
+`tilt` — and nothing downstream reads it: the comparer diffs the reports, and it
+is restored only so a hit leaves the same artefacts on disk as the run it stands
+in for. Compressed it is 874 KB, 37x smaller, at 0.14 s to write and 0.02 s to
+read back. The report stays plain; it is small, and it is the one file every hit
+has to open.
+
 Neither hatch is the same door:
 
 ```sh

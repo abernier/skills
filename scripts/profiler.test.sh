@@ -450,6 +450,23 @@ else
   fail "the comment does not say the baseline was reused"
 fi
 
+# A hit has to leave the same artefacts behind as the run it stands in for, and
+# the raw commit log is the big one — 32.6 MB on `tilt` against 375 KB for the
+# report folded out of it, which is why it is stored compressed. Both halves
+# matter: that it is small on disk, and that it still reads back byte for byte.
+entry="$(ls -d "$repo/.git/profiler-control-cache"/*/ 2>/dev/null | head -1)"
+if [[ -f "$entry/commits.json.gz" && ! -f "$entry/commits.json" ]]; then
+  pass "the cached commit log is stored compressed, never raw"
+else
+  fail "the cached commit log was stored raw — 32 MB an entry on a real repo"
+fi
+if [[ -f "$repo/profiler-results/control/commits.json" ]] &&
+  gunzip -c "$entry/commits.json.gz" | cmp -s - "$repo/profiler-results/control/commits.json"; then
+  pass "and a hit restores it byte for byte"
+else
+  fail "the restored commit log does not match what was cached"
+fi
+
 # ── A key that moves invalidates ─────────────────────────────────────────────
 #
 # The base branch advanced. Same tree, new commit — enough, because what must be
