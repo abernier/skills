@@ -390,6 +390,136 @@ else
   fail "a step under --step-min-renders reddened the run — see $log"
 fi
 
+# ── The control side is measured once, then reused ───────────────────────────
+#
+# Around 90 s of every run is the control leg re-measuring a branch that has not
+# moved. Render counts are reproducible where milliseconds are not, so that leg's
+# report is cached — and every case below is about the single way that can go
+# wrong: an entry outliving what it was keyed on, handing the comparer a
+# baseline for code that is no longer there. That reads as a **green** run, and
+# says nothing on its way past.
+#
+# `bench.json` here does what tilt's does with `e2e/marks.ts`: it names a file
+# the experiment hands to the control worktree, so the catalogue both sides run
+# is the working tree's. It is written only for these cases — handing
+# `e2e/fixture.ts` forward would give `control-legacy` the very import it is
+# supposed to be missing.
+repo="$tmp/cache"
+make_repo "$repo"
+cat > "$repo/bench.json" <<'JSON'
+{ "controlWorktreeCopy": ["e2e/fixture.ts"] }
+JSON
+
+# Names what the log says the run did with its control side, so a case below
+# reads as the question it is asking rather than as a grep.
+control_was() {
+  if grep -q "Reusing the cached control report" "$log"; then
+    echo reused
+  elif grep -q "Preparing control worktree" "$log"; then
+    echo measured
+  else
+    echo neither
+  fi
+}
+
+run_profiler "$repo" --control control-ok
+if [[ "$(control_was)" == measured ]]; then
+  pass "a cold cache measures the control side"
+else
+  fail "a cold cache did not measure the control side — see $log"
+fi
+
+run_profiler "$repo" --control control-ok
+if [[ "$(control_was)" == reused ]]; then
+  pass "an identical second run reuses that report instead of measuring again"
+else
+  fail "the second run measured the control side again — see $log"
+fi
+
+# The other half, and the one that matters: reusing must not cost the run its
+# verdict. A cache that skipped the comparison would satisfy the line above.
+if [[ $status -eq 0 ]] && grep -q "PASS" "$log"; then
+  pass "and still compares both sides, and still passes"
+else
+  fail "the run on a reused baseline exited $status — see $log"
+fi
+
+if grep -q "reused from cache" "$repo/profiler-results/comment.md" 2>/dev/null; then
+  pass "and the comment says the baseline was reused, and names its key"
+else
+  fail "the comment does not say the baseline was reused"
+fi
+
+# ── A key that moves invalidates ─────────────────────────────────────────────
+#
+# The base branch advanced. Same tree, new commit — enough, because what must be
+# in the key is the commit: this is the entry whose reuse would compare a PR
+# against a baseline for code that is no longer on the branch it names.
+git -C "$repo" branch -f control-ok "$(
+  git -C "$repo" commit-tree "$(git -C "$repo" rev-parse "control-ok^{tree}")" \
+    -p control-ok -m "the base branch moves"
+)"
+run_profiler "$repo" --control control-ok
+if [[ "$(control_was)" == measured ]]; then
+  pass "a control branch that advanced invalidates it"
+else
+  fail "a moved control branch was still served from cache — see $log"
+fi
+
+# The catalogue changed. Both sides run the working tree's copy of it, so a
+# report measured under the old one is a report of a different bench — this is
+# `e2e/marks.ts` in the repo this harness was written for.
+perl -0pi -e 's/durationMs: 120/durationMs: 121/' "$repo/e2e/fixture.ts"
+run_profiler "$repo" --control control-ok
+if [[ "$(control_was)" == measured ]]; then
+  pass "a file the control worktree is handed invalidates it"
+else
+  fail "an edited controlWorktreeCopy file was still served from cache — see $log"
+fi
+
+# ── Two escape hatches, because they open onto different rooms ───────────────
+#
+# `--no-cache` is for `pnpm exec profiler`. The environment variable is the only
+# one that survives `lgtm-perf`, which forwards its arguments to `tracerbench.sh`
+# too — where `--no-cache` is not an option and would kill the gate in its parser.
+run_profiler "$repo" --control control-ok --no-cache
+if [[ "$(control_was)" == measured ]]; then
+  pass "--no-cache re-measures a baseline somebody stopped trusting"
+else
+  fail "--no-cache was served from cache — see $log"
+fi
+
+PROFILER_CONTROL_CACHE=0 run_profiler "$repo" --control control-ok
+if [[ "$(control_was)" == measured ]]; then
+  pass "and so does PROFILER_CONTROL_CACHE=0, which is the one that reaches lgtm-perf"
+else
+  fail "PROFILER_CONTROL_CACHE=0 was served from cache — see $log"
+fi
+
+# And the hatch still leaves a usable entry behind: refusing to write would make
+# the next run pay for the same doubt again.
+run_profiler "$repo" --control control-ok
+if [[ "$(control_was)" == reused ]]; then
+  pass "a forced re-measure still leaves the fresh report for the next run"
+else
+  fail "the report from a forced re-measure was not kept — see $log"
+fi
+
+# ── A control leg that failed is not a baseline ──────────────────────────────
+#
+# It still writes a report — the spec records before it asserts — so "there is a
+# report" is not the test. Caching one would freeze a run that did not happen
+# the way it was meant to in as the baseline for every later run on the branch.
+repo="$tmp/cache-red-control"
+make_repo "$repo" control
+run_profiler "$repo" --control control-ok
+run_profiler "$repo" --control control-ok
+if [[ "$(control_was)" == measured ]]; then
+  pass "a control leg that failed its own assertions is not kept"
+else
+  fail "a failed control leg was cached as the baseline — see $log"
+fi
+
 echo ""
 if [[ $fails -gt 0 ]]; then
   echo "$fails failing"
