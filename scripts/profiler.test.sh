@@ -38,7 +38,10 @@ pass(){ printf '  \033[32m✓\033[0m %s\n' "$1"; }
 fail(){ printf '  \033[31m✗\033[0m %s\n' "$1"; fails=$((fails + 1)); }
 
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+# `PROFILER_TEST_KEEP=1` leaves the fixture repos and their run logs behind.
+# A failing case here is a whole harness run, and the only way to read why is
+# the log inside the repo it ran in — which the teardown takes with it.
+trap '[[ -n "${PROFILER_TEST_KEEP:-}" ]] && echo "kept: $tmp" || rm -rf "$tmp"' EXIT
 
 # This suite runs the real `profiler.sh`, which takes the machine-wide bench
 # lock — and it runs inside `lgtm`, which has to stay fast. Pointing TMPDIR at
@@ -147,6 +150,22 @@ test("the catalogue's own assertion", () => {
 TS
   fi
 
+  # Two components under the default source root, so `isCodebaseComponent`
+  # resolves the names the commit logs below use. Without them every render in
+  # this fixture is "external" and the actionable half of the comparer — the
+  # one the gates read — sees nothing at all.
+  mkdir -p "$repo/src"
+  cat > "$repo/src/Board.tsx" <<'TSX'
+export function Board() {
+  return null;
+}
+TSX
+  cat > "$repo/src/Card.tsx" <<'TSX'
+export function Card() {
+  return null;
+}
+TSX
+
   # Same lockfile on both sides, so the control worktree symlinks `node_modules`
   # instead of installing into it.
   : > "$repo/pnpm-lock.yaml"
@@ -164,6 +183,55 @@ TS
   git -C "$repo" add -A
   git -C "$repo" commit -qm "with the profiler"
   git -C "$repo" branch control-ok
+}
+
+# A step that rendered nothing on the control and renders on the experiment.
+#
+# Both sides read it from their own `e2e/quiet.ts`: the committed one costs
+# nothing, and the working tree — which *is* the experiment, as in a real run —
+# overwrites it with $2 renders. It has to exist on both sides, because the
+# harness copies the experiment's spec into the control worktree and a spec
+# importing a file the control does not have dies at load, which is a different
+# case entirely (and already covered above).
+silent_step() {
+  local repo="$1"
+  local renders="$2"
+
+  quiet_file "$repo" 0
+  perl -0pi -e 's|import \{ STEPS \} from "./fixture.js";|import { STEPS } from "./fixture.js";\nimport { QUIET } from "./quiet.js";|' "$repo/e2e/profiler.spec.ts"
+  perl -0pi -e 's|steps: STEPS|steps: [...STEPS, QUIET]|' "$repo/e2e/profiler.spec.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm "a step that costs nothing"
+  git -C "$repo" branch -f control-ok
+
+  quiet_file "$repo" "$renders"
+}
+
+# `e2e/quiet.ts` with $2 renders of `Board` — 0 writes a step with no commits
+# at all, which is what "rendered nothing" means to the aggregate.
+quiet_file() {
+  local repo="$1"
+  local n="$2"
+  # No commits at all when n is 0 — "rendered nothing" as the aggregate reads
+  # it, which is the shape the control side of a silent step really has.
+  local commits="[]"
+  if [[ "$n" -gt 0 ]]; then
+    commits="[{ renders: Array.from({ length: $n }, () => ({ name: \"Board\", cause: { kind: \"state\" }, selfTime: 1, baseTime: 2 })) }]"
+  fi
+  cat > "$repo/e2e/quiet.ts" <<TS
+export const QUIET = {
+  step: "quiet",
+  durationMs: 40,
+  totalCommits: $n,
+  byId: {
+    root: {
+      mount: { count: 0, actualMs: 0, baseMs: 0 },
+      update: { count: $n, actualMs: 1, baseMs: 1 },
+    },
+  },
+  commits: $commits,
+};
+TS
 }
 
 # Run the bench the way `lgtm-perf` runs it. Sets `status` and `log`.
@@ -277,6 +345,49 @@ if [[ $status -eq 0 ]]; then
   pass "a failing control leg does not redden the run"
 else
   fail "a failing control leg exited $status — see $log"
+fi
+
+# ── A step that rendered nothing and now renders is a red run ────────────────
+#
+# The hole the component gate cannot cover: a component with no renders on the
+# control is classed `new`, and `new` never blocks — rightly, since a PR that
+# adds a component takes it from 0 to N. A *step* cannot use that excuse: the
+# catalogue is the same gesture on both sides. Measured on `tilt`, where a
+# `setState` on the camera controls' `onChange` took `zoom` from 0 to 2,937
+# fiber renders and the run stayed green.
+repo="$tmp/silent-step"
+make_repo "$repo"
+silent_step "$repo" 40
+run_profiler "$repo" --control control-ok
+
+if [[ $status -ne 0 ]]; then
+  pass "a step that rendered nothing on the control and renders here exits non-zero"
+else
+  fail "a silent step that started rendering exited 0 — see $log"
+fi
+
+# The verdict line, not the step name: `quiet` also appears in the zone table
+# of a perfectly green run, so grepping for it alone would pass with the gate
+# removed.
+if grep -q "rendered nothing on the control" "$repo/profiler-results/comment.md" 2>/dev/null; then
+  pass "and the verdict says which step, and why"
+else
+  fail "the verdict does not name the silent step — see $repo/profiler-results/comment.md"
+fi
+
+# ── Below the floor it is noise, not a finding ───────────────────────────────
+#
+# The half that keeps the gate from reddening on a step that renders twice
+# because a tooltip mounted. Same fixture, under `--step-min-renders`.
+repo="$tmp/silent-step-small"
+make_repo "$repo"
+silent_step "$repo" 4
+run_profiler "$repo" --control control-ok --step-min-renders 20
+
+if [[ $status -eq 0 ]]; then
+  pass "a handful of renders under the floor does not gate"
+else
+  fail "a step under --step-min-renders reddened the run — see $log"
 fi
 
 echo ""

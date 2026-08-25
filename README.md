@@ -110,7 +110,9 @@ repo does differently stays in that repo.
 Two benches over one pipeline, for a repo that wants a perf gate on its PRs.
 `tracerbench` measures wall-clock durations of Playwright `test.step()` marks.
 `profiler` measures React re-renders through `<React.Profiler>`, and gates only
-on components it can resolve in your own source. Each builds the current branch
+on components it can resolve in your own source — plus any step that rendered
+nothing on the control and renders on this branch, which is the one shape a
+per-component percentage cannot express. Each builds the current branch
 and a `git worktree` of the control branch, benches both sides on paired ports,
 diffs the two reports and renders a sticky PR comment.
 
