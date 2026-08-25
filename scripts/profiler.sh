@@ -94,6 +94,9 @@ THRESHOLD=15
 SOFT_FLAG="--soft"
 COMPONENT_THRESHOLD=""
 COMPONENT_MIN_RENDERS=""
+# Empty means "whatever the comparer defaults to" — the same contract every
+# other width here has, so a default can move in one place.
+STEP_MIN_RENDERS=""
 INCLUDE_EXTERNAL=""
 
 # Shared helpers: `default_control`, `emit_comment_footer`, `acquire_bench_lock`,
@@ -116,6 +119,7 @@ while [[ $# -gt 0 ]]; do
     --threshold)             THRESHOLD="$2"; shift 2 ;;
     --component-threshold)   COMPONENT_THRESHOLD="$2"; shift 2 ;;
     --component-min-renders) COMPONENT_MIN_RENDERS="$2"; shift 2 ;;
+    --step-min-renders)      STEP_MIN_RENDERS="$2"; shift 2 ;;
     --include-external)      INCLUDE_EXTERNAL="--include-external"; shift ;;
     --strict)                SOFT_FLAG=""; shift ;;
     *) echo "Unknown option: $1"; exit 1 ;;
@@ -463,6 +467,9 @@ else
   if [[ -n "$COMPONENT_MIN_RENDERS" ]]; then
     COMPARE_ARGS+=(--component-min-renders "$COMPONENT_MIN_RENDERS")
   fi
+  if [[ -n "$STEP_MIN_RENDERS" ]]; then
+    COMPARE_ARGS+=(--step-min-renders "$STEP_MIN_RENDERS")
+  fi
   if [[ -n "$INCLUDE_EXTERNAL" ]]; then
     COMPARE_ARGS+=("$INCLUDE_EXTERNAL")
   fi
@@ -490,6 +497,9 @@ if [[ -n "$COMPONENT_THRESHOLD" ]]; then
 fi
 if [[ -n "$COMPONENT_MIN_RENDERS" ]]; then
   REPRO+=" --component-min-renders $COMPONENT_MIN_RENDERS"
+fi
+if [[ -n "$STEP_MIN_RENDERS" ]]; then
+  REPRO+=" --step-min-renders $STEP_MIN_RENDERS"
 fi
 if [[ -n "$INCLUDE_EXTERNAL" ]]; then
   REPRO+=" $INCLUDE_EXTERNAL"

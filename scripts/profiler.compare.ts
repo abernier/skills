@@ -15,6 +15,13 @@
  *    codebase components count (Radix, shadcn primitives, third-party libs
  *    are filtered — see `isCodebaseComponent`).
  *
+ *    Alongside it, a **silent-step gate**: a step whose codebase components
+ *    rendered nothing on the control and render here. A component going 0 → N
+ *    is deliberately exempt (a PR that adds one would redden), but a *step*
+ *    cannot borrow that excuse — the catalogue is the same gesture on both
+ *    sides, so a gesture that committed nothing and now commits is the same
+ *    gesture doing new work.
+ *
  * 2. **Zone commit counts** (`byId`, advisory) — coarse `<React.Profiler>`
  *    zones (`root` and whatever else the app wraps). Reported but never
  *    blocking — too coarse
@@ -26,7 +33,7 @@
  *   tsx scripts/profiler.compare.ts <control.json> <experiment.json> \
  *     [--md <output.md>] [--threshold <percent>] [--min-commits <n>] \
  *     [--component-threshold <percent>] [--component-min-renders <n>] \
- *     [--include-external] [--soft]
+ *     [--step-min-renders <n>] [--include-external] [--soft]
  *
  * Flags:
  *   --md                       Write a Markdown summary (sticky PR comment).
@@ -38,6 +45,10 @@
  *   --component-min-renders    Per-component render-volume floor for the
  *                              blocking gate. Default 20 (both sides must
  *                              clear it).
+ *   --step-min-renders         Floor for the silent-step gate: a step whose
+ *                              codebase components rendered nothing on the
+ *                              control and this many times on the experiment
+ *                              fails the PR. Default 20.
  *   --include-external         Surface non-codebase components (Radix etc.)
  *                              in the actionable sections. Off by default.
  *   --soft                     Always exit 0 (calibration mode).
@@ -151,6 +162,12 @@ let mdOutputPath: string | undefined;
 let threshold = 15;
 let componentThreshold = 30; // ±30% — looser than zone gate, smaller counts are noisier
 let componentMinRenders = 20; // gate components with meaningful render volume only
+/**
+ * Floor for the silent-step gate: how many renders a step has to produce on
+ * the experiment side, having produced *none* on the control, before that
+ * counts as a regression rather than as noise. See the gate itself below.
+ */
+let stepMinRenders = 20;
 let minCommits = 5;
 let soft = false;
 /**
@@ -195,6 +212,13 @@ for (let i = 0; i < args.length; i++) {
       process.exit(2);
     }
     componentMinRenders = v;
+  } else if (a === "--step-min-renders" && args[i + 1]) {
+    const v = Number(args[++i]);
+    if (!Number.isFinite(v) || v < 0) {
+      console.error(`Invalid --step-min-renders: ${args[i]}`);
+      process.exit(2);
+    }
+    stepMinRenders = v;
   } else if (a === "--min-commits" && args[i + 1]) {
     const v = Number(args[++i]);
     if (!Number.isFinite(v) || v < 0) {
@@ -493,6 +517,34 @@ let compRegressions = 0;
  */
 let compBlockers = 0;
 
+/**
+ * Steps that rendered *nothing* from the codebase on the control and render on
+ * the experiment.
+ *
+ * The per-component gate cannot see these: a component with no renders on the
+ * control is classed `new`, and `new` never reaches the blocker tier because
+ * the tier needs volume on both sides. That exemption is right for a component
+ * — a PR that *adds* one legitimately takes it from 0 to N, and blocking that
+ * would redden every feature. It is wrong for a step: the catalogue is the same
+ * gestures on both sides, so a gesture that committed nothing and now commits
+ * is not a new feature, it is the same gesture doing new work.
+ *
+ * Measured on `tilt`: a `setState` wired to the camera controls' `onChange`
+ * took `zoom` from 0 to 2,937 fiber renders, and the run was green — every
+ * culprit was printed under "Top component regressions" and scored zero.
+ *
+ * Deliberately only the 0 → N case. A step that already rendered and renders
+ * more is ordinary growth, and gating it on a percentage would redden the PR
+ * that adds a badge to a screen. What this catches is the shape a percentage
+ * cannot express: silence, broken.
+ */
+let silentStepBlockers = 0;
+const silentStepRows: {
+  step: string;
+  experiment: number;
+  topComponent: string | null;
+}[] = [];
+
 for (const eStep of experiment.steps) {
   const cStep = control.steps.find((s) => s.step === eStep.step);
   const eByComp = eStep.byComponent ?? {};
@@ -507,11 +559,26 @@ for (const eStep of experiment.steps) {
   const ctrlScanCommits = cStep?.scanCommits ?? 0;
   const expScanCommits = eStep.scanCommits ?? 0;
 
+  // Codebase renders only, both sides — the silent-step gate below reads
+  // these. Filtering to the codebase for the same reason every other
+  // actionable number here does: a Radix internal is real and not fixable
+  // from the PR that would go red for it.
+  let ctrlStepRenders = 0;
+  let expStepRenders = 0;
+  let topComponent: { name: string; renders: number } | null = null;
+
   for (const component of names) {
     const c = cByComp[component];
     const e = eByComp[component];
     const ctrlRenders = c?.renders ?? 0;
     const expRenders = e?.renders ?? 0;
+    if (isCodebaseComponent(component)) {
+      ctrlStepRenders += ctrlRenders;
+      expStepRenders += expRenders;
+      if (!topComponent || expRenders > topComponent.renders) {
+        topComponent = { name: component, renders: expRenders };
+      }
+    }
     const { pct, indicator } = pctIndicator(ctrlRenders, expRenders);
 
     // Normalised delta: renders-per-commit on each side, then % delta.
@@ -618,6 +685,20 @@ for (const eStep of experiment.steps) {
       changedPropDeltas,
     });
   }
+
+  // ── The silent-step gate ───────────────────────────────────────────────
+  //
+  // `cStep` is checked because a step absent from the control is catalogue
+  // drift, not a regression — it is already reported as `(new step)` above,
+  // and every one of its renders is new by construction.
+  if (cStep && ctrlStepRenders === 0 && expStepRenders >= stepMinRenders) {
+    silentStepBlockers++;
+    silentStepRows.push({
+      step: eStep.step,
+      experiment: expStepRenders,
+      topComponent: topComponent?.name ?? null,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -690,11 +771,28 @@ if (regressionRows.length || newRows.length) {
 
 console.log("");
 
-const failed = compBlockers > 0;
+const failed = compBlockers > 0 || silentStepBlockers > 0;
+const blockerParts: string[] = [];
+if (compBlockers > 0) {
+  blockerParts.push(
+    `${compBlockers} component blocker(s) above ±${componentThreshold}% with ≥${componentMinRenders} renders`,
+  );
+}
+if (silentStepBlockers > 0) {
+  blockerParts.push(
+    `${silentStepBlockers} step(s) that rendered nothing on the control and ≥${stepMinRenders} times here`,
+  );
+}
 const verdictLine = failed
-  ? `❌ FAIL — ${compBlockers} component blocker(s) above ±${componentThreshold}% with ≥${componentMinRenders} renders`
+  ? `❌ FAIL — ${blockerParts.join(", and ")}`
   : `✅ PASS — 0 component blockers`;
 console.log(verdictLine);
+for (const r of silentStepRows) {
+  console.log(
+    `   ${r.step}: 0 → ${r.experiment} renders` +
+      (r.topComponent ? ` (heaviest: ${r.topComponent})` : ""),
+  );
+}
 if (compRegressions > compBlockers) {
   console.log(
     `ℹ️  ${compRegressions - compBlockers} additional component(s) regressed above ±${threshold}% but below blocking gate (advisory)`,
@@ -738,12 +836,17 @@ if (mdOutputPath) {
   // line a reviewer actually skims. Nothing was gated wrongly; the comment
   // simply contradicted the exit code.
   const selfDiff = path.resolve(controlPath) === path.resolve(experimentPath);
-  const failedMd = compBlockers > 0;
+  const failedMd = compBlockers > 0 || silentStepBlockers > 0;
   let verdictBullet: string;
   if (selfDiff) {
     verdictBullet = `**Verdict**: ❌ NO BASELINE — this run was diffed against itself, so nothing was compared`;
   } else if (failedMd) {
-    verdictBullet = `**Verdict**: ❌ FAIL — ${compBlockers} component blocker(s) above ±${componentThreshold}% (≥${componentMinRenders} renders)`;
+    verdictBullet = `**Verdict**: ❌ FAIL — ${blockerParts.join(", and ")}`;
+    for (const r of silentStepRows) {
+      verdictBullet += `\n  - \`${r.step}\` rendered nothing on the control and **${r.experiment}** times here${
+        r.topComponent ? ` — heaviest: \`${r.topComponent}\`` : ""
+      }`;
+    }
   } else {
     verdictBullet = `**Verdict**: ✅ PASS — 0 component blockers`;
   }
@@ -846,7 +949,7 @@ if (mdOutputPath) {
     "",
     ...tldrBullets,
     "",
-    `_**Component-level renders** (bippy, the automated equivalent of React DevTools' "Why did this render?") are the gate: a regression above ±${componentThreshold}% with ≥${componentMinRenders} renders fails the PR — **and only when \`Δ raw\` regressed too** (above ±${threshold}%), so the normalisation can raise a real finding but never invent one. A component whose render count did not move has not regressed, however the denominator moved. **Zone-level commit counts** (\`<React.Profiler>\` zones) are advisory — too coarse to gate on, but useful for catching cumulative drift across many small components. Component deltas are **normalised by React commits/step** (\`Δ/cmt\`) to suppress event-capture variance. Soft mode: ${soft ? "**ON**" : "OFF"}._`,
+    `_**Component-level renders** (bippy, the automated equivalent of React DevTools' "Why did this render?") are the gate: a regression above ±${componentThreshold}% with ≥${componentMinRenders} renders fails the PR, and so does a **step that rendered nothing on the control** and ≥${stepMinRenders} times here — the one shape a percentage cannot express, and the one a component's \`new\` exemption has to let through — **and only when \`Δ raw\` regressed too** (above ±${threshold}%), so the normalisation can raise a real finding but never invent one. A component whose render count did not move has not regressed, however the denominator moved. **Zone-level commit counts** (\`<React.Profiler>\` zones) are advisory — too coarse to gate on, but useful for catching cumulative drift across many small components. Component deltas are **normalised by React commits/step** (\`Δ/cmt\`) to suppress event-capture variance. Soft mode: ${soft ? "**ON**" : "OFF"}._`,
     "",
     "```mermaid",
     "xychart-beta",
@@ -1005,6 +1108,6 @@ if (mdOutputPath) {
 // catch what's actually fixable.
 // ---------------------------------------------------------------------------
 
-if (compBlockers > 0 && !soft) {
+if ((compBlockers > 0 || silentStepBlockers > 0) && !soft) {
   process.exit(1);
 }
