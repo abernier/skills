@@ -288,6 +288,56 @@ there would miss yours.
 
 </details>
 
+#### The control side, measured once
+
+The control leg is the largest single cost of a `profiler` run — a worktree, an
+install or a symlink, a dev server and your whole catalogue — spent re-measuring
+a branch that has not moved since the last time it ran. So it is not re-measured:
+its report is cached, and a run whose control side is unchanged skips the leg
+outright.
+
+That is legitimate here and nowhere else in this package. A render count is a
+property of the code; a millisecond is a property of the machine on the day. On
+identical code the two sides came out 0.2% apart on fiber renders, and a step as
+busy as a full slider sweep agreed to the render — 37,355 on both sides.
+`tracerbench` has no cache and must not grow one.
+
+The key is every input that can change what the control leg produces:
+
+- the control commit — and with it the lockfile, Playwright and Chromium it
+  carries
+- this harness, hashed by content
+- the injected recorder bundle, and the `bippy` it inlined
+- your `e2e/profiler.spec.ts`, `playwright.profiler.config.ts`, `bench.json`,
+  and every file `controlWorktreeCopy` names — **your catalogue is in here**
+- your own `pnpm-lock.yaml`, which decides whether the control worktree symlinks
+  `node_modules` or installs its own
+
+Nothing that only reaches the comparer is in it: widening `--threshold` does not
+throw a good report away.
+
+The risk is one-sided, so the key errs one way. A key that moves when it need not
+costs one control leg. A key that fails to move when it should compares your
+branch against a baseline for code that is no longer there — and *that* reads as
+a green run. When in doubt it over-invalidates.
+
+Two more rules fall out of the same reasoning: a control leg that **failed its
+own assertions** is never kept, and every entry records its key in longhand at
+`key.txt`, so two keys that disagree can be diffed to find which input moved.
+Entries live in the repository's common git dir — shared by every worktree,
+newest five kept.
+
+Neither hatch is the same door:
+
+```sh
+pnpm exec profiler --no-cache            # re-measure it, and keep the fresh report
+PROFILER_CONTROL_CACHE=0 pnpm run LGTM   # the one that survives `lgtm-perf`
+```
+
+`lgtm-perf` forwards its arguments to `tracerbench` as well, where `--no-cache`
+is not an option and would kill the gate in its parser. That is what the
+environment variable is for.
+
 #### One bench at a time
 
 Two benchmarks sharing a machine measure each other, whichever repos they are

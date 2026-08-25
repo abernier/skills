@@ -30,6 +30,7 @@ set -euo pipefail
 #   pnpm run profiler -- --component-min-renders 30      # custom blocking floor
 #   pnpm run profiler -- --include-external              # surface Radix/shadcn in actionable sections
 #   pnpm run profiler -- --strict                        # fail on regression (default: soft)
+#   pnpm run profiler -- --no-cache                      # re-measure the control side
 #
 # Used by both `pnpm run profiler` locally and the CI `profiler` job.
 # ──────────────────────────────────────────────────────────────────────────────
@@ -99,6 +100,14 @@ COMPONENT_MIN_RENDERS=""
 STEP_MIN_RENDERS=""
 INCLUDE_EXTERNAL=""
 
+# Reusing the control side is the default; `--no-cache` and
+# `PROFILER_CONTROL_CACHE=0` both turn it off. Two doors, because they open onto
+# different rooms: `--no-cache` is for `pnpm exec profiler`, and the environment
+# variable is the only one that reaches this script through `lgtm-perf` — which
+# forwards its arguments to `tracerbench.sh` as well, where `--no-cache` is not
+# an option and would kill the gate in its parser.
+CONTROL_CACHE="${PROFILER_CONTROL_CACHE:-1}"
+
 # Shared helpers: `default_control`, `emit_comment_footer`, `acquire_bench_lock`,
 # `release_bench_lock`, `kill_bench_ports`, `trap_teardown`.
 # shellcheck source=./bench.common.sh
@@ -122,6 +131,7 @@ while [[ $# -gt 0 ]]; do
     --step-min-renders)      STEP_MIN_RENDERS="$2"; shift 2 ;;
     --include-external)      INCLUDE_EXTERNAL="--include-external"; shift ;;
     --strict)                SOFT_FLAG=""; shift ;;
+    --no-cache)              CONTROL_CACHE=0; shift ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -178,6 +188,158 @@ aggregate_side() {
   echo "⏳ Aggregating $side commit log…"
   "$ROOT_DIR/node_modules/.bin/tsx" "$SCRIPT_DIR/profiler.aggregate.ts" \
     "$commits" "$RESULTS_DIR/$side/report.json"
+}
+
+# ── The control side, cached ─────────────────────────────────────────────────
+#
+# The control leg is the largest single cost of a run — a worktree, an install
+# or a symlink, a dev server and the whole catalogue, around 90 s of it — spent
+# re-measuring a branch that has not moved since the last time it was measured.
+#
+# Unlike wall clock, what that leg produces is reproducible. On identical code
+# the two sides came out at 157,440 against 157,103 fiber renders, 0.2% apart,
+# and a step as busy as `slider-hover` agreed to the render: 37,355 on both
+# sides. A render count is a property of the code where a millisecond is a
+# property of the machine on the day — which is why this lives in this file and
+# not in `bench.common.sh`. `tracerbench.sh` must never grow a cache off these
+# helpers: caching a duration is caching the weather.
+#
+# The risk is entirely one-sided. A key that moves when it need not costs one
+# extra control leg and nothing else. A key that fails to move when it should
+# hands the comparer a baseline for code that is no longer there — and a
+# regression measured against the wrong control reads as a **green run**, which
+# is the one failure this harness exists to refuse. So the key carries every
+# input that can change what the control leg produces, and wherever a cheap
+# over-approximation exists it is preferred to a precise one.
+#
+# What is in it, and why:
+#
+#   - **the control commit.** The code being measured. Its own `pnpm-lock.yaml`
+#     rides along inside it, so the control's Playwright and Chromium are here.
+#   - **this whole harness, hashed by content.** The script that runs the leg
+#     and the aggregate that folds it. Content rather than the package version,
+#     so an edited working copy invalidates too; over-invalidating on an
+#     unrelated `branchstat.sh` edit is the cheap half of the trade.
+#   - **the scan bundle.** The recorder injected into both sides, and with it
+#     whichever `bippy` the measured repo resolved.
+#   - **the spec, the Playwright config, `bench.json`, and every file
+#     `controlWorktreeCopy` names.** The experiment's apparatus, laid over the
+#     control worktree. This is where a catalogue lives: an `e2e/marks.ts` that
+#     changed is a different scenario, and reusing a report measured under the
+#     old one compares two different benches.
+#   - **the experiment's `pnpm-lock.yaml`.** It decides whether the worktree
+#     symlinks `node_modules` or installs its own, which is a different
+#     dependency tree for the leg to run in.
+#   - **the resolved `@playwright/test` version**, standing in for the Chromium
+#     build. The two lockfiles already pin it; this catches a tree installed
+#     from a different one.
+#
+# What is deliberately *not* in it: every flag that only reaches the comparer —
+# `--threshold`, `--component-threshold`, `--component-min-renders`,
+# `--step-min-renders`, `--include-external`, `--strict`. They change the
+# verdict, never the measurement, and keying on them would throw a perfectly
+# good report away every time someone widened a gate.
+#
+# One thing the key cannot cover, recorded rather than resolved: it hashes the
+# *lockfiles*, not the installed trees they describe. A `node_modules` edited by
+# hand under an unchanged lockfile is invisible to it.
+#
+# In the **common** git dir, so every worktree of this repo shares one cache. A
+# control report is a property of a commit and an apparatus, both of which are
+# in the key; which worktree first measured it is not.
+CACHE_ROOT="$(cd "$ROOT_DIR" && cd "$(git rev-parse --git-common-dir)" && pwd)/profiler-control-cache"
+# One entry per (control commit × apparatus). A base branch that advances daily
+# would otherwise accumulate one a day forever, and the newest few are the only
+# ones anybody comes back to.
+CACHE_KEEP=5
+
+# `shasum` on macOS, `sha256sum` on a runner. Both read a file list or stdin and
+# print `<hash>  <name>`.
+if command -v shasum >/dev/null 2>&1; then
+  SHA256=(shasum -a 256)
+else
+  SHA256=(sha256sum)
+fi
+
+# One hash over every file of this harness, with the paths excluded — the same
+# scripts must hash the same whether they are read from a checkout of this
+# repository or from a consumer's `node_modules`, which is the whole point.
+harness_hash() {
+  find "$SCRIPT_DIR" -type f -print0 |
+    LC_ALL=C sort -z |
+    xargs -0 "${SHA256[@]}" |
+    cut -d' ' -f1 |
+    "${SHA256[@]}" |
+    cut -d' ' -f1
+}
+
+# `<hash> <label>`, or `- <label>` when the file is absent. Absence is part of
+# the key and never a reason to leave a line out: a `controlWorktreeCopy` entry
+# that appears or disappears changes what the control worktree contains.
+cache_manifest_file() {
+  local label="$1" file="$2"
+  if [[ -f "$file" ]]; then
+    printf '%s %s\n' "$("${SHA256[@]}" "$file" | cut -d' ' -f1)" "$label"
+  else
+    printf -- '- %s\n' "$label"
+  fi
+}
+
+# The key in longhand, stored beside the entry it names — so two keys that
+# disagree can be diffed to find out which input moved, which is the only way to
+# debug a cache that misses when it should hit. `CONTROL_SHA` and `SCAN_BUNDLE`
+# must both be set before this is called.
+control_cache_manifest() {
+  echo "control $CONTROL_SHA"
+  echo "harness $HARNESS_HASH"
+  echo "playwright $(node -p "require('@playwright/test/package.json').version" 2>/dev/null || echo unknown)"
+  cache_manifest_file "scan-bundle" "$SCAN_BUNDLE"
+  cache_manifest_file "e2e/profiler.spec.ts" "$ROOT_DIR/e2e/profiler.spec.ts"
+  cache_manifest_file "playwright.profiler.config.ts" "$ROOT_DIR/playwright.profiler.config.ts"
+  cache_manifest_file "bench.json" "$ROOT_DIR/bench.json"
+  cache_manifest_file "pnpm-lock.yaml" "$ROOT_DIR/pnpm-lock.yaml"
+  while IFS= read -r rel; do
+    cache_manifest_file "$rel" "$ROOT_DIR/$rel"
+  done < <(bench_config_list controlWorktreeCopy)
+}
+
+# Everything past the newest `CACHE_KEEP` entries, by last *use*.
+prune_control_cache() {
+  local stale dir
+  stale="$(ls -1dt "$CACHE_ROOT"/*/ 2>/dev/null | tail -n +$((CACHE_KEEP + 1)))"
+  [[ -n "$stale" ]] || return 0
+  while IFS= read -r dir; do
+    rm -rf "$dir"
+  done <<< "$stale"
+  return 0
+}
+
+# Keep this leg's report for the next run that asks the same question.
+#
+# Best-effort throughout: a cache that cannot be written is a slower run, never
+# a failed one, so every step swallows its own error and the function always
+# returns 0. Written to a scratch directory and renamed into place, so an
+# interrupted write cannot leave a half-file under a key that claims to be
+# complete.
+store_control_cache() {
+  local staging="$CACHE_ENTRY.staging"
+  rm -rf "$staging"
+  mkdir -p "$staging" 2>/dev/null || return 0
+  cp "$RESULTS_DIR/control/report.json" "$staging/report.json" 2>/dev/null || {
+    rm -rf "$staging"
+    return 0
+  }
+  if [[ -f "$RESULTS_DIR/control/commits.json" ]]; then
+    cp "$RESULTS_DIR/control/commits.json" "$staging/commits.json" 2>/dev/null || true
+  fi
+  printf '%s\n' "$CACHE_MANIFEST" > "$staging/key.txt" 2>/dev/null || true
+  rm -rf "$CACHE_ENTRY"
+  mv "$staging" "$CACHE_ENTRY" 2>/dev/null || {
+    rm -rf "$staging"
+    return 0
+  }
+  prune_control_cache
+  return 0
 }
 
 CURRENT_BRANCH="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD)"
@@ -249,9 +411,9 @@ aggregate_side experiment
 echo ""
 
 # ── 2. Benchmark control (target branch via worktree) ───────────────────────
-WORKTREE_DIR="$(mktemp -d)"
-
-echo "⏳ Preparing control worktree ($CONTROL_BRANCH)…"
+# The control commit is resolved before anything is prepared: it is the first
+# line of the cache key below, and on a hit none of the preparation happens.
+echo "⏳ Resolving control ($CONTROL_BRANCH)…"
 # Try to fetch latest from remote; fall back to local ref when offline
 if git -C "$ROOT_DIR" fetch origin "$CONTROL_BRANCH" 2>/dev/null; then
   CONTROL_REF="origin/$CONTROL_BRANCH"
@@ -259,111 +421,163 @@ else
   echo "   ⚠️  fetch failed (offline?), using local $CONTROL_BRANCH"
   CONTROL_REF="$CONTROL_BRANCH"
 fi
-git -C "$ROOT_DIR" worktree add "$WORKTREE_DIR" "$CONTROL_REF"
-# Reuse node_modules from the main repo when the lockfile hasn't changed;
-# only run pnpm install when it differs.
-#
-# In a workspace the root `node_modules` is not enough: pnpm splits a
-# workspace's dependencies between the root store and a per-package
-# `node_modules` holding that package's own deps and its `.bin`. Symlinking the
-# root alone leaves those packages with no dependencies at all and the control
-# dev server dies on the first import, so each one named in `workspacePackages`
-# gets its own link. A single-package repo names none and the root link is the
-# whole of it.
-if diff -q "$ROOT_DIR/pnpm-lock.yaml" "$WORKTREE_DIR/pnpm-lock.yaml" >/dev/null 2>&1; then
-  ln -s "$ROOT_DIR/node_modules" "$WORKTREE_DIR/node_modules"
-  while IFS= read -r pkg; do
-    mkdir -p "$WORKTREE_DIR/$pkg"
-    ln -s "$ROOT_DIR/$pkg/node_modules" "$WORKTREE_DIR/$pkg/node_modules"
-  done < <(bench_config_list workspacePackages)
-else
-  echo "   ⚠️  lockfile differs, running pnpm install in worktree…"
-  (cd "$WORKTREE_DIR" && pnpm install --frozen-lockfile)
+CONTROL_SHA="$(git -C "$ROOT_DIR" rev-parse "$CONTROL_REF")"
 
-  # The control supplies the application. The experiment supplies the apparatus.
-  #
-  # That install just gave the worktree the *control's* dependency tree, and
-  # this package is in it at whatever version the control branch pinned — or,
-  # on the PR that introduces the bench, not at all. The spec and the config
-  # copied in below are the experiment's, so every subpath they import has to
-  # exist over there. Both halves of that have been seen in the wild:
-  # `ERR_PACKAGE_PATH_NOT_EXPORTED` where the base pinned a version predating
-  # the subpath, and `Cannot find package '@abernier/skills'` where the base
-  # predates the package. Neither says anything about the PR — the branch that
-  # adds a bench can never have a baseline that already ran it — so the
-  # experiment's copy is laid over whatever the install produced.
-  #
-  # Copied, never symlinked. Node resolves a symlinked package from its real
-  # location, so through a link this package's `@playwright/test` — its only
-  # peer dependency — would come from the *experiment's* tree while the
-  # control's own binary drives the run: two Playwright instances in one
-  # process, and a spec importing `@abernier/skills/bench-tests` registers its
-  # tests in the one nobody is listening to. A copy resolves upward through the
-  # worktree's own `node_modules`, which is the control's Playwright, which is
-  # the one running.
-  #
-  # `package.json` plus this directory are the whole of what the package ships
-  # — see its `files` — and it declares no runtime dependencies, so there is
-  # nothing else to bring.
-  APPARATUS="$WORKTREE_DIR/node_modules/@abernier/skills"
-  {
-    rm -rf "$APPARATUS" &&
-      mkdir -p "$APPARATUS" &&
-      cp "$SCRIPT_DIR/../package.json" "$APPARATUS/package.json" &&
-      cp -R "$SCRIPT_DIR" "$APPARATUS/$(basename "$SCRIPT_DIR")"
-  } || {
-    # Loudly, and without measuring. A control leg left on the control's copy
-    # of the harness either dies at config load or measures a different
-    # scenario, and both read downstream as "the control produced no report" —
-    # a sentence about the branch, which this is not.
-    echo "❌ Could not put this harness into the control worktree ($APPARATUS)."
-    echo "   Refusing to bench the control against a harness that is not this one."
-    exit 1
-  }
+# A key is only worth having if every line of it landed. `harness_hash` is a
+# five-stage pipeline over a directory this script does not own, and an empty
+# result would key the cache on everything *except* the harness — a hole of
+# exactly the kind this whole mechanism is written to avoid. So it is computed
+# here, where a failure can still be acted on, and a run that cannot key its
+# cache measures the control side instead of guessing.
+HARNESS_HASH="$(harness_hash || true)"
+CACHE_KEYABLE=1
+if [[ -z "$HARNESS_HASH" ]]; then
+  echo "   ⚠️  Could not hash the harness at $SCRIPT_DIR — measuring the control side."
+  CACHE_KEYABLE=""
+  HARNESS_HASH="unkeyable"
 fi
-echo "✅ Control worktree ready"
-echo ""
 
-# Always use the current branch's spec and config so both sides run the same
-# scenario. This matters both when the control predates the spec entirely
-# (no tests found) and when the spec is updated on the experiment branch
-# (stale spec would compare different interactions, making the diff meaningless).
-# The `globalSetup` those configs name is `@abernier/skills/profiler-scan`,
-# which the worktree resolves through the `node_modules` it was just given — so
-# nothing about it is copied. It short-circuits anyway: it sees the pre-built
-# `$SCAN_BUNDLE` and returns without touching esbuild or bippy, which the
-# control branch may not have at all.
-mkdir -p "$WORKTREE_DIR/e2e"
-cp "$ROOT_DIR/e2e/profiler.spec.ts" "$WORKTREE_DIR/e2e/profiler.spec.ts"
-cp "$ROOT_DIR/playwright.profiler.config.ts" "$WORKTREE_DIR/playwright.profiler.config.ts"
-# Whatever else this repo's spec reaches for, on top of that core. Same reason
-# every time: the control branch may predate the module, so the working tree's
-# copy has to travel with the spec. The gesture helpers and the scan setup used
-# to be copied here unconditionally, as the files every consumer had; they now
-# come from `@abernier/skills/gestures` and `@abernier/skills/profiler-scan`,
-# which the worktree resolves the same way its `playwright` binary does. A repo
-# keeping gestures or a recorder of its own declares that file here like any
-# other.
-while IFS= read -r rel; do
-  mkdir -p "$WORKTREE_DIR/$(dirname "$rel")"
-  cp "$ROOT_DIR/$rel" "$WORKTREE_DIR/$rel"
-done < <(bench_config_list controlWorktreeCopy)
-
-echo "⏳ Benchmarking control ($CONTROL_BRANCH)…"
+CACHE_MANIFEST="$(control_cache_manifest)"
+CACHE_KEY="$(printf '%s\n' "$CACHE_MANIFEST" | "${SHA256[@]}" | cut -d' ' -f1)"
+CACHE_ENTRY="$CACHE_ROOT/$CACHE_KEY"
+CONTROL_CACHE_HIT=""
 CONTROL_LEG=0
-(
-  cd "$WORKTREE_DIR"
-  PROFILER_PORT=$CONTROL_PORT \
-  PROFILER_COMMITS="$RESULTS_DIR/control/commits.json" \
-  PROFILER_SCAN_BUNDLE="$SCAN_BUNDLE" \
-  "$WORKTREE_DIR/node_modules/.bin/playwright" test --config playwright.profiler.config.ts
-) || CONTROL_LEG=$?
-[[ $CONTROL_LEG -eq 0 ]] || echo "❌ The control leg exited $CONTROL_LEG — its output above says why."
-aggregate_side control
-# Free the worktree before the compare step (the teardown would also run it on
-# exit, but cleaning up early reclaims disk while we still have work to do).
-cleanup
-WORKTREE_DIR=""
+
+if [[ -n "$CACHE_KEYABLE" && "$CONTROL_CACHE" != "0" && -f "$CACHE_ENTRY/report.json" ]]; then
+  CONTROL_CACHE_HIT=1
+  echo "♻️  Reusing the cached control report — $CONTROL_BRANCH at ${CONTROL_SHA:0:7}"
+  echo "   Same commit, same spec, same recorder, same harness: nothing that"
+  echo "   decides what the control leg measures has moved since it measured it."
+  echo "   key ${CACHE_KEY:0:12} — $CACHE_ENTRY/key.txt"
+  echo "   Re-measure it with PROFILER_CONTROL_CACHE=0, or --no-cache."
+  cp "$CACHE_ENTRY/report.json" "$RESULTS_DIR/control/report.json"
+  if [[ -f "$CACHE_ENTRY/commits.json" ]]; then
+    cp "$CACHE_ENTRY/commits.json" "$RESULTS_DIR/control/commits.json"
+  fi
+  # Last use, not last write: pruning keeps whatever is still being asked for.
+  touch "$CACHE_ENTRY"
+else
+  WORKTREE_DIR="$(mktemp -d)"
+
+  echo "⏳ Preparing control worktree ($CONTROL_BRANCH)…"
+  git -C "$ROOT_DIR" worktree add "$WORKTREE_DIR" "$CONTROL_REF"
+  # Reuse node_modules from the main repo when the lockfile hasn't changed;
+  # only run pnpm install when it differs.
+  #
+  # In a workspace the root `node_modules` is not enough: pnpm splits a
+  # workspace's dependencies between the root store and a per-package
+  # `node_modules` holding that package's own deps and its `.bin`. Symlinking the
+  # root alone leaves those packages with no dependencies at all and the control
+  # dev server dies on the first import, so each one named in `workspacePackages`
+  # gets its own link. A single-package repo names none and the root link is the
+  # whole of it.
+  if diff -q "$ROOT_DIR/pnpm-lock.yaml" "$WORKTREE_DIR/pnpm-lock.yaml" >/dev/null 2>&1; then
+    ln -s "$ROOT_DIR/node_modules" "$WORKTREE_DIR/node_modules"
+    while IFS= read -r pkg; do
+      mkdir -p "$WORKTREE_DIR/$pkg"
+      ln -s "$ROOT_DIR/$pkg/node_modules" "$WORKTREE_DIR/$pkg/node_modules"
+    done < <(bench_config_list workspacePackages)
+  else
+    echo "   ⚠️  lockfile differs, running pnpm install in worktree…"
+    (cd "$WORKTREE_DIR" && pnpm install --frozen-lockfile)
+
+    # The control supplies the application. The experiment supplies the apparatus.
+    #
+    # That install just gave the worktree the *control's* dependency tree, and
+    # this package is in it at whatever version the control branch pinned — or,
+    # on the PR that introduces the bench, not at all. The spec and the config
+    # copied in below are the experiment's, so every subpath they import has to
+    # exist over there. Both halves of that have been seen in the wild:
+    # `ERR_PACKAGE_PATH_NOT_EXPORTED` where the base pinned a version predating
+    # the subpath, and `Cannot find package '@abernier/skills'` where the base
+    # predates the package. Neither says anything about the PR — the branch that
+    # adds a bench can never have a baseline that already ran it — so the
+    # experiment's copy is laid over whatever the install produced.
+    #
+    # Copied, never symlinked. Node resolves a symlinked package from its real
+    # location, so through a link this package's `@playwright/test` — its only
+    # peer dependency — would come from the *experiment's* tree while the
+    # control's own binary drives the run: two Playwright instances in one
+    # process, and a spec importing `@abernier/skills/bench-tests` registers its
+    # tests in the one nobody is listening to. A copy resolves upward through the
+    # worktree's own `node_modules`, which is the control's Playwright, which is
+    # the one running.
+    #
+    # `package.json` plus this directory are the whole of what the package ships
+    # — see its `files` — and it declares no runtime dependencies, so there is
+    # nothing else to bring.
+    APPARATUS="$WORKTREE_DIR/node_modules/@abernier/skills"
+    {
+      rm -rf "$APPARATUS" &&
+        mkdir -p "$APPARATUS" &&
+        cp "$SCRIPT_DIR/../package.json" "$APPARATUS/package.json" &&
+        cp -R "$SCRIPT_DIR" "$APPARATUS/$(basename "$SCRIPT_DIR")"
+    } || {
+      # Loudly, and without measuring. A control leg left on the control's copy
+      # of the harness either dies at config load or measures a different
+      # scenario, and both read downstream as "the control produced no report" —
+      # a sentence about the branch, which this is not.
+      echo "❌ Could not put this harness into the control worktree ($APPARATUS)."
+      echo "   Refusing to bench the control against a harness that is not this one."
+      exit 1
+    }
+  fi
+  echo "✅ Control worktree ready"
+  echo ""
+
+  # Always use the current branch's spec and config so both sides run the same
+  # scenario. This matters both when the control predates the spec entirely
+  # (no tests found) and when the spec is updated on the experiment branch
+  # (stale spec would compare different interactions, making the diff meaningless).
+  # The `globalSetup` those configs name is `@abernier/skills/profiler-scan`,
+  # which the worktree resolves through the `node_modules` it was just given — so
+  # nothing about it is copied. It short-circuits anyway: it sees the pre-built
+  # `$SCAN_BUNDLE` and returns without touching esbuild or bippy, which the
+  # control branch may not have at all.
+  mkdir -p "$WORKTREE_DIR/e2e"
+  cp "$ROOT_DIR/e2e/profiler.spec.ts" "$WORKTREE_DIR/e2e/profiler.spec.ts"
+  cp "$ROOT_DIR/playwright.profiler.config.ts" "$WORKTREE_DIR/playwright.profiler.config.ts"
+  # Whatever else this repo's spec reaches for, on top of that core. Same reason
+  # every time: the control branch may predate the module, so the working tree's
+  # copy has to travel with the spec. The gesture helpers and the scan setup used
+  # to be copied here unconditionally, as the files every consumer had; they now
+  # come from `@abernier/skills/gestures` and `@abernier/skills/profiler-scan`,
+  # which the worktree resolves the same way its `playwright` binary does. A repo
+  # keeping gestures or a recorder of its own declares that file here like any
+  # other.
+  while IFS= read -r rel; do
+    mkdir -p "$WORKTREE_DIR/$(dirname "$rel")"
+    cp "$ROOT_DIR/$rel" "$WORKTREE_DIR/$rel"
+  done < <(bench_config_list controlWorktreeCopy)
+
+  echo "⏳ Benchmarking control ($CONTROL_BRANCH)…"
+  (
+    cd "$WORKTREE_DIR"
+    PROFILER_PORT=$CONTROL_PORT \
+    PROFILER_COMMITS="$RESULTS_DIR/control/commits.json" \
+    PROFILER_SCAN_BUNDLE="$SCAN_BUNDLE" \
+    "$WORKTREE_DIR/node_modules/.bin/playwright" test --config playwright.profiler.config.ts
+  ) || CONTROL_LEG=$?
+  [[ $CONTROL_LEG -eq 0 ]] || echo "❌ The control leg exited $CONTROL_LEG — its output above says why."
+  aggregate_side control
+  # Free the worktree before the compare step (the teardown would also run it on
+  # exit, but cleaning up early reclaims disk while we still have work to do).
+  cleanup
+  WORKTREE_DIR=""
+
+  # Only a leg that ran clean is worth keeping. A control that failed its own
+  # assertions, or timed out on a mark, produced a report of a run that did not
+  # happen the way it was meant to — and caching it would freeze that accident
+  # in as the baseline every later run on this branch is judged against.
+  #
+  # `--no-cache` still stores. The hatch is for a baseline somebody stopped
+  # trusting: re-measuring it and then throwing the fresh report away would make
+  # the next run pay for the same doubt all over again.
+  if [[ -n "$CACHE_KEYABLE" && $CONTROL_LEG -eq 0 && -f "$RESULTS_DIR/control/report.json" ]]; then
+    store_control_cache
+  fi
+fi
+
 echo ""
 
 # ── 3. Compare ──────────────────────────────────────────────────────────────
@@ -503,6 +717,20 @@ if [[ -n "$STEP_MIN_RENDERS" ]]; then
 fi
 if [[ -n "$INCLUDE_EXTERNAL" ]]; then
   REPRO+=" $INCLUDE_EXTERNAL"
+fi
+if [[ "$CONTROL_CACHE" == "0" ]]; then
+  REPRO+=" --no-cache"
+fi
+
+# A reader has to be able to tell a baseline that was measured for this run from
+# one that was reused, without going and reading the console output of a run
+# that has scrolled away. The key is printed with it, because the only question
+# worth asking about a reused baseline is what it was keyed on.
+if [[ -n "$CONTROL_CACHE_HIT" && -f "$RESULTS_DIR/comment.md" ]]; then
+  {
+    echo ""
+    echo "<sub>Control side reused from cache — \`$CONTROL_BRANCH\` at \`${CONTROL_SHA:0:7}\`, key \`${CACHE_KEY:0:12}\`. Re-measure it with \`PROFILER_CONTROL_CACHE=0\`.</sub>"
+  } >> "$RESULTS_DIR/comment.md"
 fi
 
 emit_comment_footer "$RESULTS_DIR/comment.md" "$ROOT_DIR" "$REPRO"
