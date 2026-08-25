@@ -56,6 +56,11 @@ export TMPDIR="$tmp"
 # The working tree is the experiment, as it is in a real run.
 make_repo() {
   local repo="$1"
+  # Which side's spec asserts something false — "" for neither. The spec writes
+  # its commit log first either way, so the failing side still produces a report
+  # and the comparison still happens: what is under test is the leg's *verdict*,
+  # not a missing report.
+  local fail_side="${2:-}"
   mkdir -p "$repo/e2e"
   ln -s "$pkg_dir/node_modules" "$repo/node_modules"
 
@@ -78,7 +83,7 @@ TS
 
   cat > "$repo/e2e/profiler.spec.ts" <<'TS'
 import * as fs from "node:fs";
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 // Absent on `control-legacy`. A control that cannot resolve what the copied
 // spec imports fails before it measures anything — no browser required to
@@ -121,6 +126,26 @@ export const STEPS = [
   },
 ];
 TS
+
+  # A catalogue's own assertion, the kind no percentage threshold can express —
+  # `tilt`'s is "this gesture must not commit React once per pointer event".
+  # Both sides run the experiment's copy of the spec, so the side it fails on is
+  # read at runtime from the path it was handed.
+  if [[ -n "$fail_side" ]]; then
+    cat >> "$repo/e2e/profiler.spec.ts" <<TS
+
+test("the catalogue's own assertion", () => {
+  // The path segment, not a substring of the whole path: this fixture's own
+  // directory is named after the case, and matching the bare word matched that
+  // too — failing the experiment side of a control-side case. (No backticks in
+  // here: this heredoc interpolates, so they would run as a command.)
+  const side = process.env.PROFILER_COMMITS!.includes("/control/")
+    ? "control"
+    : "experiment";
+  expect(side, "the catalogue's own assertion failed").not.toBe("$fail_side");
+});
+TS
+  fi
 
   # Same lockfile on both sides, so the control worktree symlinks `node_modules`
   # instead of installing into it.
@@ -212,6 +237,46 @@ if grep -q "PASS" "$log"; then
   pass "and says PASS"
 else
   fail "and did not say PASS — see $log"
+fi
+
+# ── A red experiment leg is a red run ────────────────────────────────────────
+#
+# Both sides measure, the comparer finds nothing, and the run is still red —
+# because the branch's own spec said so. Before the fix this was the shape of a
+# silent false green: `tilt` planted a camera-state leak (orbit 2 → 444 React
+# commits), the spec caught it, the leg exited 1, and `lgtm-perf` printed
+# `profiler : ✅ pass` and exited 0.
+repo="$tmp/experiment-leg-red"
+make_repo "$repo" experiment
+run_profiler "$repo" --control control-ok
+
+if [[ $status -ne 0 ]]; then
+  pass "a failing experiment leg exits non-zero"
+else
+  fail "a failing experiment leg exited 0 — the spec's own verdict was dropped"
+fi
+
+# The half that says the verdict came from the leg and not from the comparer: a
+# run that reddened because a component regressed would prove nothing here.
+if grep -q "PASS" "$log"; then
+  pass "even though the comparison itself found no regression"
+else
+  fail "the comparison did not pass — this case no longer isolates the leg"
+fi
+
+# ── A red control leg is not this branch's problem ───────────────────────────
+#
+# The other half of the rule. The control measures the base branch, and
+# reddening a PR for what main asserts about itself would block work on a
+# finding its author cannot fix from here.
+repo="$tmp/control-leg-red"
+make_repo "$repo" control
+run_profiler "$repo" --control control-ok
+
+if [[ $status -eq 0 ]]; then
+  pass "a failing control leg does not redden the run"
+else
+  fail "a failing control leg exited $status — see $log"
 fi
 
 echo ""
