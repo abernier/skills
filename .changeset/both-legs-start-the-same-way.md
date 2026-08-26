@@ -1,5 +1,5 @@
 ---
-"@abernier/skills": patch
+"@abernier/skills": minor
 ---
 
 The profiler's two legs start the same way.
