@@ -105,6 +105,51 @@ repo does differently stays in that repo.
   Pin the exact tag while this is 0.x: `v0` moves, and a 0.x minor is allowed to
   break. From 1.0 on, `v1` is the ref to use.
 
+### i18n catalogs
+
+Two commands over a `lang/*.json` message catalog, for a repo using react-intl.
+`i18n-check` reports IDs the code asks for that no catalog has, and IDs the
+catalogs hold that the code never refers to. `i18n-merge` writes the first
+group in with an empty translation, and `--prune` deletes the second.
+
+```json
+{
+  "scripts": {
+    "i18n:check": "I18N_SRC_DIR=src I18N_IGNORE=src/i18n/messages.ts i18n-check",
+    "i18n:merge": "I18N_SRC_DIR=src I18N_IGNORE=src/i18n/messages.ts i18n-merge"
+  }
+}
+```
+
+`I18N_LANG_DIR` defaults to `lang`, `I18N_SRC_DIR` to `src`. `I18N_IGNORE` is
+the catalog module itself, if the repo has one — extracting from it would find
+the keys it imports rather than the ones the UI asks for.
+
+**What counts as "referred to", and why it is wider than `formatjs extract`.**
+The extractor reads the AST and only recognises an `id` that is a literal on a
+`<FormattedMessage>` or `intl.formatMessage()` call. A great many live IDs sit
+elsewhere — in a lookup table, behind a ternary, handed to a component as a
+prop — and calling those unused is not a cosmetic mistake: `--prune` deletes
+them, in every locale, on the say-so of a check that recommended the flag.
+
+So the answer is a union of three:
+
+1. what `formatjs extract` found;
+2. every catalog key spelled out as a whole quoted string anywhere in the
+   source, whatever syntax surrounds it;
+3. the globs declared in `i18n-dynamic:` comments, for the IDs the code builds
+   and so never spells out:
+
+   ```ts
+   // i18n-dynamic: sync2.cloud.*
+   intl.formatMessage({ id: `sync2.cloud.${status}` });
+   ```
+
+Only (1) can prove a message *exists*, so the missing-from-catalog half still
+reads it alone. (2) and (3) only ever *spare* a key, which is the right way
+round: an over-broad match costs a stale string, a missed one costs a
+translation in every locale.
+
 ### Bench harness
 
 Two benches over one pipeline, for a repo that wants a perf gate on its PRs.
@@ -135,7 +180,8 @@ pnpm add -D github:abernier/skills#v0.13.1
 ```
 
 Every program here is a `bin` entry — `tracerbench`, `profiler`, `lgtm-perf`,
-`tracerbench-compare`, `profiler-compare`, `profiler-aggregate`. They resolve
+`tracerbench-compare`, `profiler-compare`, `profiler-aggregate`, and the two
+`i18n-*` above. They resolve
 from `node_modules/.bin`, so nothing writes a path and nothing cares which
 directory you run them from.
 
