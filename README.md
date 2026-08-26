@@ -161,9 +161,29 @@ per-component percentage cannot express. Each builds the current branch
 and a `git worktree` of the control branch, benches both sides on paired ports,
 diffs the two reports and renders a sticky PR comment.
 
-The pipeline ships here; the scenarios stay yours — `e2e/*.spec.ts`,
-`playwright.*.config.ts`, and the `test:tracerbench` / `test:profiler` scripts
-that run them.
+The pipeline ships here; the scenarios stay yours — `e2e/*.spec.ts` and
+`playwright.*.config.ts`.
+
+<details>
+<summary>Which of the two benches runs your <code>test:*</code> script</summary>
+
+`tracerbench` runs `pnpm run test:tracerbench` for **both** legs: the control's
+contribution is a built bundle moved next to the experiment's, so both legs run
+from your repo root, on your branch, through your script.
+
+`profiler` runs Playwright itself for both legs, with
+`playwright.profiler.config.ts`, and reads `test:profiler` for neither. Its
+control leg lives in a worktree of the control branch, where that script is the
+*control's* — a different script, or none at all on the PR that adds the bench.
+Running it on one leg and not the other is how a harness invents a delta: an
+environment prefix, a `pre` hook, `pnpm run`'s own `PATH`, all reaching one side.
+
+Two consequences. Chromium comes from the harness now, per leg — drop
+`pretest:profiler` if it only ever installed a browser. And a profiler
+`command` may not assume `node_modules/.bin` is on `PATH`: spell it
+`pnpm run dev`, not `vite`.
+
+</details>
 
 ```
 pnpm add -D github:abernier/skills#v0.14.0

@@ -190,6 +190,28 @@ aggregate_side() {
     "$commits" "$RESULTS_DIR/$side/report.json"
 }
 
+# Chromium, for the Playwright that is about to run — and for that one only.
+#
+# Consumers used to get this from `pretest:profiler`, which `pnpm run` fired on
+# the way into the experiment leg. That guaranteed the wrong thing twice: the
+# control leg, which does not go through any script, never ran it; and on a
+# worktree this script had to install into, the binary driving that leg is the
+# *control's*, at whatever Playwright the control's lockfile pinned, wanting a
+# browser build nobody fetched. CI has the same hole — `perf.yml` caches
+# `~/.cache/ms-playwright` keyed on the experiment's Playwright version.
+#
+# So each leg asks its own binary for its own browser. Already there, this is a
+# cache check and costs nothing. Not there and unfetchable — offline, no
+# network — the leg that follows says so far better than this line could, so a
+# failure here warns and the leg still runs.
+#
+# A cached control leg calls neither: nothing runs, so nothing needs a browser.
+install_browser() {
+  local dir="$1"
+  "$dir/node_modules/.bin/playwright" install chromium ||
+    echo "   ⚠️  could not install chromium for $dir/node_modules/.bin/playwright"
+}
+
 # ── The control side, cached ─────────────────────────────────────────────────
 #
 # The control leg is the largest single cost of a run — a worktree, an install
@@ -388,6 +410,36 @@ echo "✅ scan bundle: $SCAN_BUNDLE ($(wc -c <"$SCAN_BUNDLE" | tr -d ' ') bytes)
 echo ""
 
 # ── 1. Benchmark experiment (current branch) ─────────────────────────────────
+#
+# Both legs are started by this script, the same way, and neither goes through
+# the repo's `test:profiler`.
+#
+# The control leg never could. It runs inside a worktree of the control branch,
+# where `test:profiler` is the *control's* — a different script, or none at all
+# on the branch that introduces the bench, which is where this harness is used
+# most. Running it there would contradict the invariant the rest of this section
+# is built on: the control supplies the application, the experiment supplies the
+# apparatus.
+#
+# The experiment leg did go through it, and that was the whole of the asymmetry.
+# Anything the script contributed — an environment prefix, a `pre` hook, a
+# wrapper, `pnpm run`'s own `PATH` and `npm_*` block, all of which Playwright
+# passes on to the web server it spawns — reached one side only. A leg that
+# *dies* for it is loud and reads as "the control cannot run this bench". A leg
+# that merely runs under conditions the other never saw is silent, and then part
+# of the delta is this harness rather than the branch.
+#
+# Nothing is lost by not asking. This script already names the spec and the
+# config it copies forward two sections down, so `test:profiler` was never
+# consulted for *what* runs — only for the environment it happened to run in.
+# `pretest:profiler`'s one real job is Chromium, and `install_browser` above
+# does that per leg, for the binary that leg actually uses.
+#
+# One thing a `command` in `playwright.profiler.config.ts` may therefore not
+# assume: `node_modules/.bin` on `PATH`. It was never there on the control leg;
+# it is now on neither. Spell the server `pnpm run dev` or `pnpm exec vite`,
+# which is what all three known consumers already do.
+#
 # A leg is allowed to fail without stopping the run — the other side is still
 # worth measuring, and the compare step is what decides the verdict. What is not
 # allowed is failing quietly: a leg that dies at config load is discovered pages
@@ -407,13 +459,14 @@ echo ""
 # reddening this branch for what main asserts about itself would block a PR for
 # somebody else's finding. It is still printed.
 echo "⏳ Benchmarking experiment ($CURRENT_BRANCH)…"
+install_browser "$ROOT_DIR"
 EXPERIMENT_LEG=0
 (
   cd "$ROOT_DIR"
   PROFILER_PORT=$EXPERIMENT_PORT \
   PROFILER_COMMITS="$RESULTS_DIR/experiment/commits.json" \
   PROFILER_SCAN_BUNDLE="$SCAN_BUNDLE" \
-  pnpm run test:profiler
+  "$ROOT_DIR/node_modules/.bin/playwright" test --config playwright.profiler.config.ts
 ) || EXPERIMENT_LEG=$?
 [[ $EXPERIMENT_LEG -eq 0 ]] || echo "❌ The experiment leg exited $EXPERIMENT_LEG — its output above says why."
 aggregate_side experiment
@@ -560,6 +613,9 @@ else
   done < <(bench_config_list controlWorktreeCopy)
 
   echo "⏳ Benchmarking control ($CONTROL_BRANCH)…"
+  # The worktree's own binary, which on the install path is the control branch's
+  # Playwright, not this one. Same line as the experiment leg, one directory over.
+  install_browser "$WORKTREE_DIR"
   (
     cd "$WORKTREE_DIR"
     PROFILER_PORT=$CONTROL_PORT \

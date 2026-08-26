@@ -4,14 +4,12 @@
 import { profilerConfig } from "@abernier/skills/playwright";
 
 export default profilerConfig({
-  // `pnpm run dev`, and the layout lives in that script rather than here.
+  // `pnpm run dev`, and the layout lives in that script rather than here: it is
+  // the same sentence in the flat repo and in the workspace, and the manifest
+  // next to it is the one file that already knows where the app went.
   //
-  // It cannot live in the environment. The two legs do not start the same way:
-  // the experiment leg runs `pnpm run test:profiler`, but the control leg execs
-  // the worktree's `playwright` binary directly (`profiler.sh`), so anything a
-  // `test:profiler` script exports — an env prefix, a `pre` step — reaches the
-  // experiment side only. A command the config spells out is spawned by
-  // Playwright on both.
+  // `pnpm run`, never a bare `vite`: `profiler.sh` starts both legs by exec'ing
+  // Playwright directly, so `node_modules/.bin` is on neither leg's `PATH`.
   command: ({ port }) => `pnpm run dev --port ${port} --strictPort`,
   timeout: 60_000,
   webServer: { timeout: 60_000 },
